@@ -1,30 +1,28 @@
-<script setup>
-import HelloWorld from './components/HelloWorld.vue'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import AppLayout from '@/layouts/AppLayout.vue'
+import AuthLayout from '@/layouts/AuthLayout.vue'
+import { Toaster } from 'vue-sonner'
+
+const route = useRoute()
+
+const layout = computed(() => {
+  const l = route.meta.layout as string
+  if (l === 'app') return AppLayout
+  if (l === 'fullscreen') return null // fullscreen pages render directly
+  return AuthLayout
+})
 </script>
 
 <template>
-  <div>
-    <a href="https://vite.dev" target="_blank">
-      <img src="/vite.svg" class="logo" alt="Vite logo" />
-    </a>
-    <a href="https://vuejs.org/" target="_blank">
-      <img src="./assets/vue.svg" class="logo vue" alt="Vue logo" />
-    </a>
-  </div>
-  <HelloWorld msg="Vite + Vue" />
-</template>
+  <Toaster position="top-right" :toastOptions="{ duration: 4000 }" rich-colors />
 
-<style scoped>
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.vue:hover {
-  filter: drop-shadow(0 0 2em #42b883aa);
-}
-</style>
+  <!-- Fullscreen layout (e.g. Cook Mode) – no wrapper -->
+  <router-view v-if="route.meta.layout === 'fullscreen'" />
+
+  <!-- Standard layouts -->
+  <component v-else :is="layout">
+    <router-view />
+  </component>
+</template>
