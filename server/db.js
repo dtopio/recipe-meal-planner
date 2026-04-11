@@ -1,76 +1,73 @@
-import { existsSync, mkdirSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-import Database from 'better-sqlite3'
+import pg from 'pg'
 import { createSeedData } from './seed.js'
 import { normalizeHealthTargets, normalizeMealPeriods } from './utils.js'
 import { logger } from './logger.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const dataDirectory = path.join(__dirname, 'data')
-const dbFile = path.join(dataDirectory, 'mealsync.db')
-const legacyJsonFile = path.join(dataDirectory, 'db.json')
+const { Pool } = pg
+
+const DATABASE_URL = process.env.DATABASE_URL
 
 const MAX_CACHE_ENTRIES = 200
 const MAX_CACHE_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 const SESSION_CLEANUP_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
+const SAVE_DEBOUNCE_MS = 2000
 
-// Each collection is stored as a single JSON row keyed by name.
-// This gives us ACID writes and file locking from SQLite while keeping
-// the same in-memory data model the rest of the codebase uses.
 const COLLECTIONS = [
   'users', 'households', 'householdMembers', 'invites',
   'householdPreferences', 'recipes', 'mealAssignments',
   'shoppingItems', 'pantryItems', 'recipeReviews', 'sessions', 'meta',
 ]
 
-class SqliteDatabase {
+class PostgresDatabase {
   data = null
-  #sqlite = null
-  #saveStmt = null
+  #pool = null
   #cleanupTimer = null
+  #saveTimer = null
+  #saving = false
 
   /** @type {Map<string, object>} Token → session for O(1) auth lookups */
   sessionIndex = new Map()
 
   async load() {
-    mkdirSync(dataDirectory, { recursive: true })
+    if (!DATABASE_URL) {
+      throw new Error('DATABASE_URL environment variable is required')
+    }
 
-    this.#sqlite = new Database(dbFile)
+    this.#pool = new Pool({
+      connectionString: DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      max: 10,
+      idleTimeoutMillis: 30000,
+    })
 
-    // Enable WAL mode for better concurrent read performance
-    this.#sqlite.pragma('journal_mode = WAL')
-    this.#sqlite.pragma('busy_timeout = 5000')
+    // Verify connection
+    try {
+      const client = await this.#pool.connect()
+      client.release()
+      logger.info('Connected to Postgres (Supabase)')
+    } catch (error) {
+      logger.error('Failed to connect to Postgres', { error: error.message })
+      throw error
+    }
 
     // Create the collections table if it doesn't exist
-    this.#sqlite.exec(`
+    await this.#pool.query(`
       CREATE TABLE IF NOT EXISTS collections (
         name TEXT PRIMARY KEY,
-        data TEXT NOT NULL
+        data JSONB NOT NULL
       )
     `)
 
-    this.#saveStmt = this.#sqlite.prepare(
-      'INSERT OR REPLACE INTO collections (name, data) VALUES (?, ?)'
-    )
-
-    // Try to load from SQLite first
-    const existing = this.#loadFromSqlite()
+    // Try to load existing data
+    const existing = await this.#loadFromPostgres()
 
     if (existing) {
       this.data = normalizeData(existing)
+      logger.info('Loaded data from Postgres')
     } else {
-      // Try to migrate from legacy db.json
-      const migrated = await this.#migrateFromJson()
-      if (migrated) {
-        this.data = normalizeData(migrated)
-        logger.info('Migrated data from db.json to SQLite')
-      } else {
-        this.data = createSeedData()
-      }
-      this.#saveAllToSqlite()
+      this.data = createSeedData()
+      await this.#saveAllToPostgres()
+      logger.info('Seeded fresh database in Postgres')
     }
 
     this.#cleanupExpiredSessions()
@@ -87,42 +84,38 @@ class SqliteDatabase {
     return this.data
   }
 
-  #loadFromSqlite() {
-    const row = this.#sqlite.prepare('SELECT COUNT(*) as count FROM collections').get()
-    if (row.count === 0) return null
+  async #loadFromPostgres() {
+    const { rows } = await this.#pool.query('SELECT name, data FROM collections')
+    if (rows.length === 0) return null
 
     const result = {}
-    const rows = this.#sqlite.prepare('SELECT name, data FROM collections').all()
     for (const row of rows) {
-      try {
-        result[row.name] = JSON.parse(row.data)
-      } catch {
-        result[row.name] = row.name === 'meta' ? {} : []
-      }
+      result[row.name] = row.data
     }
 
     return result
   }
 
-  async #migrateFromJson() {
-    if (!existsSync(legacyJsonFile)) return null
-
+  async #saveAllToPostgres() {
+    const client = await this.#pool.connect()
     try {
-      const raw = await readFile(legacyJsonFile, 'utf8')
-      return JSON.parse(raw)
-    } catch {
-      return null
-    }
-  }
-
-  #saveAllToSqlite() {
-    const saveAll = this.#sqlite.transaction(() => {
+      await client.query('BEGIN')
       for (const name of COLLECTIONS) {
         const value = name === 'meta' ? this.data.meta : this.data[name]
-        this.#saveStmt.run(name, JSON.stringify(value || (name === 'meta' ? {} : [])))
+        const json = JSON.stringify(value || (name === 'meta' ? {} : []))
+        await client.query(
+          `INSERT INTO collections (name, data) VALUES ($1, $2::jsonb)
+           ON CONFLICT (name) DO UPDATE SET data = $2::jsonb`,
+          [name, json]
+        )
       }
-    })
-    saveAll()
+      await client.query('COMMIT')
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
   }
 
   #rebuildSessionIndex() {
@@ -137,16 +130,31 @@ class SqliteDatabase {
       this.data = createSeedData()
     }
 
+    // Debounce rapid saves
+    if (this.#saveTimer) {
+      clearTimeout(this.#saveTimer)
+    }
+
+    if (this.#saving) {
+      // Queue another save after current one finishes
+      this.#saveTimer = setTimeout(() => this.save(), SAVE_DEBOUNCE_MS)
+      return
+    }
+
+    this.#saving = true
     try {
-      this.#saveAllToSqlite()
+      await this.#saveAllToPostgres()
     } catch (error) {
       logger.error('Database write failed', { error: error.message })
+    } finally {
+      this.#saving = false
     }
   }
 
   close() {
     if (this.#cleanupTimer) clearInterval(this.#cleanupTimer)
-    if (this.#sqlite) this.#sqlite.close()
+    if (this.#saveTimer) clearTimeout(this.#saveTimer)
+    if (this.#pool) this.#pool.end()
   }
 
   #cleanupExpiredSessions() {
@@ -200,7 +208,7 @@ class SqliteDatabase {
   }
 }
 
-export const db = new SqliteDatabase()
+export const db = new PostgresDatabase()
 
 function normalizeData(data) {
   return {
