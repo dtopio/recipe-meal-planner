@@ -4,8 +4,8 @@ import {
   LayoutDashboard,
   CalendarDays,
   ShoppingCart,
+  Archive,
   BookOpen,
-  MoreHorizontal,
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -15,8 +15,8 @@ const navItems = [
   { name: 'Home', path: '/dashboard', icon: LayoutDashboard },
   { name: 'Planner', path: '/planner', icon: CalendarDays },
   { name: 'Shop', path: '/shopping-list', icon: ShoppingCart },
+  { name: 'Pantry', path: '/pantry', icon: Archive },
   { name: 'Recipes', path: '/recipes', icon: BookOpen },
-  { name: 'More', path: '/household', icon: MoreHorizontal },
 ]
 
 function isActive(path: string) {
@@ -26,29 +26,29 @@ function isActive(path: string) {
 
 <template>
   <nav
-    class="fixed bottom-0 left-0 right-0 z-50 bg-card/90 backdrop-blur-xl shadow-[0_-1px_3px_rgba(0,0,0,0.05)] lg:hidden safe-bottom"
+    class="fixed bottom-0 left-0 right-0 z-50 border-t border-border/40 bg-card/95 backdrop-blur-xl shadow-[0_-1px_6px_rgba(0,0,0,0.08)] lg:hidden safe-bottom"
     aria-label="Mobile navigation"
   >
-    <div class="flex items-center h-[72px] px-1">
+    <div class="flex items-center h-[68px] px-2">
       <button
         v-for="item in navItems"
         :key="item.path"
         @click="router.push(item.path)"
-        class="flex-1 flex flex-col items-center justify-center gap-1 min-h-[44px] py-2 rounded-xl transition-colors relative"
+        class="flex-1 flex flex-col items-center justify-center gap-0.5 min-h-[44px] py-1.5 rounded-xl transition-all duration-200 relative active:scale-95"
         :class="
           isActive(item.path)
             ? 'text-primary'
-            : 'text-muted-foreground'
+            : 'text-muted-foreground/60'
         "
         :aria-current="isActive(item.path) ? 'page' : undefined"
       >
-        <component :is="item.icon" class="w-6 h-6" />
-        <span class="text-[11px] font-semibold">{{ item.name }}</span>
-        <!-- Active dot indicator -->
+        <!-- Active pill background -->
         <span
           v-if="isActive(item.path)"
-          class="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary"
+          class="absolute inset-x-2 top-0.5 bottom-0.5 rounded-xl bg-primary/8"
         />
+        <component :is="item.icon" class="w-5 h-5 relative z-10 transition-transform duration-200" :class="isActive(item.path) ? 'scale-110' : ''" />
+        <span class="text-[10px] font-bold relative z-10 tracking-wide" :class="isActive(item.path) ? '' : 'font-semibold'">{{ item.name }}</span>
       </button>
     </div>
   </nav>

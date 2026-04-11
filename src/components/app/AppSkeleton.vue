@@ -5,7 +5,7 @@ defineProps<{
 </script>
 
 <template>
-  <div :class="['animate-pulse rounded-2xl bg-muted/60', $props.class]">
+  <div :class="['rounded-2xl skeleton-shimmer', $props.class]">
     <slot />
   </div>
 </template>

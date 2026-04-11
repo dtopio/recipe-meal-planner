@@ -3,18 +3,24 @@ import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePlannerStore } from '@/stores/planner'
 import { useRecipeStore } from '@/stores/recipes'
+import { useShoppingStore } from '@/stores/shopping'
+import { useHouseholdStore } from '@/stores/household'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import MealSlotCard from '@/components/app/MealSlotCard.vue'
 import AppSkeleton from '@/components/app/AppSkeleton.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { formatDateShort, getDayName, getDayNameShort, isToday } from '@/utils/date'
-import type { MealType, Recipe } from '@/types'
-import { ChevronLeft, ChevronRight, Search, X, BookOpen, ShoppingCart } from 'lucide-vue-next'
+import { formatMealPeriodLabel, getMealPeriodDisplay, getMealPeriods } from '@/utils/meal-periods'
+import type { MealSlot, MealType, Recipe } from '@/types'
+import { ChevronLeft, ChevronRight, Search, X, BookOpen, ShoppingCart, Copy, RefreshCw } from 'lucide-vue-next'
+import { toast } from 'vue-sonner'
 
 const router = useRouter()
 const planner = usePlannerStore()
 const recipes = useRecipeStore()
+const shopping = useShoppingStore()
+const household = useHouseholdStore()
 
 const showRecipePanel = ref(false)
 const recipeSearch = ref('')
@@ -24,32 +30,48 @@ const draggedRecipe = ref<Recipe | null>(null)
 const filteredRecipes = computed(() => {
   if (!recipeSearch.value) return recipes.recipes
   const q = recipeSearch.value.toLowerCase()
-  return recipes.recipes.filter(r => r.title.toLowerCase().includes(q))
+  return recipes.recipes.filter(recipe => recipe.title.toLowerCase().includes(q))
 })
 
-const mealTypes: MealType[] = ['breakfast', 'lunch', 'dinner']
+const mealTypes = computed(() => getMealPeriods(household.preferences))
+
+const summaryCounts = computed(() => (
+  mealTypes.value.reduce<Record<string, number>>((counts, mealType) => {
+    counts[mealType] = planner.weekDates.reduce((sum, date) => sum + getMealSlots(date, mealType).length, 0)
+    return counts
+  }, {})
+))
 
 onMounted(async () => {
-  await Promise.all([planner.loadWeekPlan(), recipes.loadRecipes()])
+  await Promise.all([
+    planner.loadWeekPlan(),
+    recipes.loadRecipes(),
+    localStorage.getItem('household_id') && !household.preferences ? household.loadHousehold() : Promise.resolve(),
+  ])
 })
 
-function onDragStart(recipe: Recipe, e: DragEvent) {
+function onDragStart(recipe: Recipe, event: DragEvent) {
   draggedRecipe.value = recipe
-  if (e.dataTransfer) {
-    e.dataTransfer.effectAllowed = 'copy'
-    e.dataTransfer.setData('text/plain', recipe.id)
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'copy'
+    event.dataTransfer.setData('text/plain', recipe.id)
   }
 }
 
-function onDragOver(e: DragEvent) {
-  e.preventDefault()
-  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+function onDragOver(event: DragEvent) {
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
 }
 
-function onDrop(date: string, mealType: MealType, e: DragEvent) {
-  e.preventDefault()
-  if (draggedRecipe.value) {
-    planner.assignMeal(date, mealType, draggedRecipe.value)
+async function onDrop(date: string, mealType: MealType, event: DragEvent) {
+  event.preventDefault()
+  if (!draggedRecipe.value) return
+
+  try {
+    await planner.assignMeal(date, mealType, draggedRecipe.value)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to assign meal')
+  } finally {
     draggedRecipe.value = null
   }
 }
@@ -63,11 +85,108 @@ function openAssignPanel(date: string, mealType: MealType) {
   showRecipePanel.value = true
 }
 
-function assignRecipe(recipe: Recipe) {
-  if (assignTarget.value) {
-    planner.assignMeal(assignTarget.value.date, assignTarget.value.mealType, recipe)
+async function assignRecipe(recipe: Recipe) {
+  if (!assignTarget.value) return
+
+  try {
+    await planner.assignMeal(assignTarget.value.date, assignTarget.value.mealType, recipe)
     showRecipePanel.value = false
     assignTarget.value = null
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to assign meal')
+  }
+}
+
+function getMealSlots(date: string, mealType: MealType): MealSlot[] {
+  return planner.getSlots(date, mealType)
+}
+
+function openRecipe(slot: MealSlot) {
+  if (!slot.recipeId) return
+  router.push(`/recipes/${slot.recipeId}`)
+}
+
+async function handleRemoveMeal(slotId: string) {
+  try {
+    await planner.removeMeal(slotId)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to remove meal')
+  }
+}
+
+async function handleChangeServings(slot: MealSlot, delta: number) {
+  const current = slot.servings || slot.recipe?.servings || 1
+  const next = Math.max(1, Math.min(20, current + delta))
+
+  if (next === current) {
+    return
+  }
+
+  try {
+    await planner.updateMealServings(slot.id, next)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to update servings')
+  }
+}
+
+async function handleToggleRecurring(slot: MealSlot) {
+  try {
+    const nextValue = !slot.repeatWeekly
+    await planner.setMealRecurring(slot.id, nextValue)
+    toast.success(nextValue ? 'Meal will repeat weekly' : 'Weekly repeat removed')
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to update recurring meal')
+  }
+}
+
+async function handleCopyLastWeek() {
+  try {
+    const summary = await planner.copyLastWeek()
+    if (summary.createdCount === 0) {
+      toast(summary.skippedCount > 0 ? 'Last week is already copied into this planner' : 'No meals found to copy from last week')
+      return
+    }
+
+    toast.success(
+      summary.skippedCount > 0
+        ? `Copied ${summary.createdCount} meals from last week, skipped ${summary.skippedCount} duplicates`
+        : `Copied ${summary.createdCount} meals from last week`,
+    )
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to copy last week')
+  }
+}
+
+async function handleApplyRecurringMeals() {
+  try {
+    const summary = await planner.applyRecurringMeals()
+    if (summary.createdCount === 0) {
+      toast(summary.skippedCount > 0 ? 'Recurring meals are already applied for this week' : 'No recurring meals are set yet')
+      return
+    }
+
+    toast.success(
+      summary.skippedCount > 0
+        ? `Applied ${summary.createdCount} recurring meals, skipped ${summary.skippedCount} duplicates`
+        : `Applied ${summary.createdCount} recurring meals`,
+    )
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to apply recurring meals')
+  }
+}
+
+async function handleGenerateShoppingList() {
+  if (planner.assignedMealCount === 0) {
+    toast.error('Plan some meals for this week before generating a shopping list')
+    return
+  }
+
+  try {
+    const summary = await shopping.generateFromPlan(planner.currentWeekStart)
+    toast.success(`Generated ${summary.createdCount} shopping items from this week's plan`)
+    router.push('/shopping-list')
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to generate shopping list')
   }
 }
 </script>
@@ -75,15 +194,21 @@ function assignRecipe(recipe: Recipe) {
 <template>
   <PageHeader
     title="Meal Planner"
-    :description="`Week of ${formatDateShort(planner.weekDates[0])} — ${formatDateShort(planner.weekDates[6])}`"
+    :description="`Week of ${formatDateShort(planner.weekDates[0])} - ${formatDateShort(planner.weekDates[6])}`"
   >
     <template #actions>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center justify-end gap-2">
         <Button variant="outline" size="sm" @click="planner.navigateWeek('prev')" class="press-scale">
           <ChevronLeft class="w-4 h-4" />
         </Button>
         <Button variant="outline" size="sm" @click="planner.navigateWeek('next')" class="press-scale">
           <ChevronRight class="w-4 h-4" />
+        </Button>
+        <Button variant="outline" size="sm" @click="handleCopyLastWeek" class="press-scale">
+          <Copy class="w-4 h-4 mr-1.5" /> Copy Last Week
+        </Button>
+        <Button variant="outline" size="sm" @click="handleApplyRecurringMeals" class="press-scale">
+          <RefreshCw class="w-4 h-4 mr-1.5" /> Apply Recurring
         </Button>
         <Button size="sm" class="hidden lg:inline-flex shadow-sm" @click="showRecipePanel = !showRecipePanel">
           <BookOpen class="w-4 h-4 mr-1.5" /> Recipe Library
@@ -92,59 +217,93 @@ function assignRecipe(recipe: Recipe) {
     </template>
   </PageHeader>
 
-  <!-- Loading -->
-  <div v-if="planner.loading && planner.slots.length === 0" class="grid grid-cols-7 gap-3">
-    <AppSkeleton v-for="i in 21" :key="i" class="h-20" />
+  <div v-if="planner.loading && planner.slots.length === 0" class="space-y-4">
+    <div class="grid grid-cols-7 gap-2">
+      <AppSkeleton v-for="i in 7" :key="'hd-' + i" class="h-16 rounded-xl" />
+    </div>
+    <div class="grid grid-cols-7 gap-2">
+      <AppSkeleton
+        v-for="i in Math.max(21, mealTypes.length * 7)"
+        :key="'sl-' + i"
+        class="h-24 rounded-xl"
+      />
+    </div>
   </div>
 
   <template v-else>
     <div class="flex gap-6">
-      <!-- Main planner grid -->
       <div class="flex-1 min-w-0">
-        <!-- Desktop: full grid -->
         <div class="hidden lg:block">
-          <div class="grid grid-cols-7 gap-3">
-            <!-- Day headers -->
-            <div
-              v-for="date in planner.weekDates"
-              :key="'h-' + date"
-              class="text-center pb-3 border-b-2 transition-colors"
-              :class="isToday(date) ? 'border-primary' : 'border-border/40'"
-            >
-              <p class="text-xs font-bold uppercase tracking-wider" :class="isToday(date) ? 'text-primary' : 'text-muted-foreground'">
-                {{ getDayNameShort(date) }}
-              </p>
-              <p class="text-sm font-semibold mt-0.5" :class="isToday(date) ? 'text-primary' : 'text-foreground'">
-                {{ formatDateShort(date) }}
-              </p>
-              <span v-if="isToday(date)" class="inline-block text-[9px] bg-primary text-primary-foreground px-2 py-0.5 rounded-full mt-1 font-bold">Today</span>
+          <div class="surface-card overflow-hidden">
+            <div class="grid grid-cols-[100px_repeat(7,minmax(0,1fr))] border-b border-border/40">
+              <div class="p-3" />
+              <div
+                v-for="date in planner.weekDates"
+                :key="'h-' + date"
+                class="min-w-0 p-3 text-center transition-colors relative"
+                :class="isToday(date) ? 'bg-primary/[0.05]' : ''"
+              >
+                <p class="text-[11px] font-bold uppercase tracking-wider" :class="isToday(date) ? 'text-primary' : 'text-muted-foreground'">
+                  {{ getDayNameShort(date) }}
+                </p>
+                <p class="text-sm font-semibold mt-0.5" :class="isToday(date) ? 'text-primary' : 'text-foreground'">
+                  {{ formatDateShort(date) }}
+                </p>
+                <span v-if="isToday(date)" class="inline-block text-[9px] bg-primary text-primary-foreground px-2 py-0.5 rounded-full mt-1 font-bold">Today</span>
+              </div>
             </div>
 
-            <!-- Meal slots per day -->
-            <template v-for="date in planner.weekDates" :key="'s-' + date">
-              <div class="space-y-2">
+            <div
+              v-for="(mealType, mealIndex) in mealTypes"
+              :key="mealType"
+              class="grid grid-cols-[100px_repeat(7,minmax(0,1fr))]"
+              :class="mealIndex < mealTypes.length - 1 ? 'border-b border-border/30' : ''"
+            >
+              <div class="p-3 flex flex-col items-center justify-center gap-1.5 border-r border-border/30 bg-muted/20">
+                <component :is="getMealPeriodDisplay(mealType).icon" class="w-4.5 h-4.5" :class="getMealPeriodDisplay(mealType).color" />
+                <span class="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{{ getMealPeriodDisplay(mealType).label }}</span>
+              </div>
+
+              <div
+                v-for="date in planner.weekDates"
+                :key="date + '-' + mealType"
+                class="min-w-0 p-2 min-h-[120px] transition-colors border-r border-border/20 last:border-r-0"
+                :class="isToday(date) ? 'bg-primary/[0.03]' : ''"
+                @dragover="onDragOver"
+                @drop="onDrop(date, mealType, $event)"
+              >
                 <div
-                  v-for="mealType in mealTypes"
-                  :key="mealType"
-                  @dragover="onDragOver"
-                  @drop="onDrop(date, mealType, $event)"
-                  @click="openAssignPanel(date, mealType)"
-                  class="transition-all rounded-xl"
-                  :class="draggedRecipe ? 'ring-2 ring-dashed ring-primary/20 rounded-xl' : ''"
+                  class="h-full min-w-0 rounded-xl transition-all p-1.5"
+                  :class="draggedRecipe ? 'ring-2 ring-dashed ring-primary/20 bg-primary/[0.02]' : ''"
                 >
-                  <MealSlotCard
-                    :slot="planner.getSlot(date, mealType) || { id: '', date, mealType }"
-                    :meal-type="mealType"
-                    @remove="planner.removeMeal(date, mealType)"
-                    @click="planner.getSlot(date, mealType)?.recipe ? router.push(`/recipes/${planner.getSlot(date, mealType)!.recipeId}`) : openAssignPanel(date, mealType)"
-                  />
+                  <div v-if="getMealSlots(date, mealType).length" class="space-y-1.5">
+                    <MealSlotCard
+                      v-for="slot in getMealSlots(date, mealType)"
+                      :key="slot.id"
+                      :slot="slot"
+                      :meal-type="mealType"
+                      :servings-saving="Boolean(planner.updatingSlotIds[slot.id])"
+                      @remove="handleRemoveMeal(slot.id)"
+                      @click="openRecipe(slot)"
+                      @decrease-servings="handleChangeServings(slot, -1)"
+                      @increase-servings="handleChangeServings(slot, 1)"
+                      @toggle-recurring="handleToggleRecurring(slot)"
+                    />
+                  </div>
+
+                  <button
+                    class="flex min-h-[40px] w-full items-center justify-center rounded-lg border border-dashed border-border/40 px-2 py-2 text-[11px] font-semibold text-muted-foreground/40 transition-all hover:border-primary/30 hover:bg-primary/[0.04] hover:text-primary"
+                    :class="getMealSlots(date, mealType).length ? 'mt-1.5' : 'h-full'"
+                    @click="openAssignPanel(date, mealType)"
+                  >
+                    + Add
+                  </button>
                 </div>
               </div>
-            </template>
+            </div>
           </div>
         </div>
 
-        <!-- Mobile/Tablet: horizontal scroll cards -->
         <div class="lg:hidden">
           <div class="flex gap-3 overflow-x-auto pb-4 -mx-5 px-5 snap-x">
             <div
@@ -170,15 +329,36 @@ function assignRecipe(recipe: Recipe) {
                   <div
                     v-for="mealType in mealTypes"
                     :key="mealType"
-                    @click="planner.getSlot(date, mealType)?.recipe
-                      ? router.push(`/recipes/${planner.getSlot(date, mealType)!.recipeId}`)
-                      : openAssignPanel(date, mealType)"
+                    class="rounded-2xl border border-border/50 bg-card/80 p-2.5"
                   >
-                    <MealSlotCard
-                      :slot="planner.getSlot(date, mealType) || { id: '', date, mealType }"
-                      :meal-type="mealType"
-                      @remove="planner.removeMeal(date, mealType)"
-                    />
+                    <div class="mb-2 flex items-center gap-2 px-1">
+                      <component :is="getMealPeriodDisplay(mealType).icon" class="w-3.5 h-3.5" :class="getMealPeriodDisplay(mealType).color" />
+                      <p class="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                        {{ formatMealPeriodLabel(mealType) }}
+                      </p>
+                    </div>
+
+                    <div class="space-y-2">
+                      <MealSlotCard
+                        v-for="slot in getMealSlots(date, mealType)"
+                        :key="slot.id"
+                        :slot="slot"
+                        :meal-type="mealType"
+                        :servings-saving="Boolean(planner.updatingSlotIds[slot.id])"
+                        @remove="handleRemoveMeal(slot.id)"
+                        @click="openRecipe(slot)"
+                        @decrease-servings="handleChangeServings(slot, -1)"
+                        @increase-servings="handleChangeServings(slot, 1)"
+                        @toggle-recurring="handleToggleRecurring(slot)"
+                      />
+
+                      <button
+                        class="flex min-h-[48px] w-full items-center justify-center rounded-xl border border-dashed border-border/60 px-3 py-3 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/[0.03] hover:text-primary"
+                        @click="openAssignPanel(date, mealType)"
+                      >
+                        Add {{ formatMealPeriodLabel(mealType).toLowerCase() }}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -186,18 +366,24 @@ function assignRecipe(recipe: Recipe) {
           </div>
         </div>
 
-        <!-- Summary bar -->
-        <div class="mt-6 surface-card p-4 flex items-center justify-between">
-          <p class="text-sm text-muted-foreground">
-            <strong class="text-foreground font-bold">{{ planner.assignedMealCount }}</strong> meals planned this week
-          </p>
-          <Button variant="outline" size="sm" @click="router.push('/shopping-list')" class="press-scale">
+        <div class="mt-6 surface-card p-4 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-4">
+            <p class="text-sm text-muted-foreground">
+              <strong class="text-foreground font-bold">{{ planner.assignedMealCount }}</strong> meals planned this week
+            </p>
+            <div class="hidden sm:flex items-center gap-3 text-xs text-muted-foreground">
+              <span v-for="mealType in mealTypes" :key="mealType" class="inline-flex items-center gap-1">
+                <component :is="getMealPeriodDisplay(mealType).icon" class="w-3 h-3" :class="getMealPeriodDisplay(mealType).color" />
+                {{ summaryCounts[mealType] || 0 }}
+              </span>
+            </div>
+          </div>
+          <Button variant="outline" size="sm" @click="handleGenerateShoppingList" class="press-scale">
             <ShoppingCart class="w-4 h-4 mr-1.5" /> Generate Shopping List
           </Button>
         </div>
       </div>
 
-      <!-- Recipe library panel (desktop) -->
       <Transition
         enter-active-class="transition duration-200 ease-out"
         enter-from-class="translate-x-4 opacity-0"
@@ -235,7 +421,7 @@ function assignRecipe(recipe: Recipe) {
                 <img v-if="recipe.imageUrl" :src="recipe.imageUrl" class="w-10 h-10 rounded-lg object-cover shrink-0 ring-1 ring-border/40" />
                 <div class="min-w-0">
                   <p class="text-xs font-semibold truncate">{{ recipe.title }}</p>
-                  <p class="text-[10px] text-muted-foreground">{{ recipe.prepTime + recipe.cookTime }}m · {{ recipe.servings }} servings</p>
+                  <p class="text-[10px] text-muted-foreground">{{ recipe.prepTime + recipe.cookTime }}m - {{ recipe.servings }} servings</p>
                 </div>
               </div>
             </div>
@@ -244,7 +430,6 @@ function assignRecipe(recipe: Recipe) {
       </Transition>
     </div>
 
-    <!-- Mobile recipe picker bottom sheet -->
     <Teleport to="body">
       <Transition
         enter-active-class="transition duration-200 ease-out"
@@ -265,12 +450,16 @@ function assignRecipe(recipe: Recipe) {
             appear
           >
             <div class="absolute bottom-0 left-0 right-0 bg-card rounded-t-2xl max-h-[75vh] flex flex-col shadow-2xl" @click.stop>
-              <!-- Handle -->
               <div class="flex justify-center pt-3 pb-1">
                 <div class="w-10 h-1 rounded-full bg-border" />
               </div>
               <div class="px-5 pb-3 flex items-center justify-between shrink-0">
-                <h3 class="font-bold text-foreground">Choose a Recipe</h3>
+                <div>
+                  <h3 class="font-bold text-foreground">Choose a Recipe</h3>
+                  <p class="text-xs text-muted-foreground mt-1">
+                    Add to {{ formatMealPeriodLabel(assignTarget.mealType).toLowerCase() }}
+                  </p>
+                </div>
                 <button @click="showRecipePanel = false" class="p-2 rounded-xl hover:bg-muted tap-target"><X class="w-5 h-5" /></button>
               </div>
               <div class="px-5 pb-3 shrink-0">
@@ -286,7 +475,7 @@ function assignRecipe(recipe: Recipe) {
                   <img v-if="recipe.imageUrl" :src="recipe.imageUrl" class="w-14 h-14 rounded-xl object-cover shrink-0 ring-1 ring-border/40" />
                   <div class="min-w-0">
                     <p class="text-sm font-semibold truncate">{{ recipe.title }}</p>
-                    <p class="text-xs text-muted-foreground mt-0.5">{{ recipe.prepTime + recipe.cookTime }}m · {{ recipe.servings }} servings</p>
+                    <p class="text-xs text-muted-foreground mt-0.5">{{ recipe.prepTime + recipe.cookTime }}m - {{ recipe.servings }} servings</p>
                   </div>
                 </button>
               </div>

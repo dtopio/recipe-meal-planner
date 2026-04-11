@@ -5,9 +5,11 @@ import {
   LayoutDashboard,
   CalendarDays,
   ShoppingCart,
+  Archive,
   BookOpen,
   Home,
   Settings,
+  BarChart3,
 } from 'lucide-vue-next'
 import { useUiStore } from '@/stores/ui'
 import { useHouseholdStore } from '@/stores/household'
@@ -20,7 +22,9 @@ const household = useHouseholdStore()
 const navItems = [
   { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
   { name: 'Planner', path: '/planner', icon: CalendarDays },
+  { name: 'Weekly Report', path: '/weekly-report', icon: BarChart3 },
   { name: 'Shopping List', path: '/shopping-list', icon: ShoppingCart },
+  { name: 'Pantry', path: '/pantry', icon: Archive },
   { name: 'Recipes', path: '/recipes', icon: BookOpen },
   { name: 'Household', path: '/household', icon: Home },
   { name: 'Settings', path: '/settings', icon: Settings },
