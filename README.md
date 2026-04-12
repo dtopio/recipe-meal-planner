@@ -62,7 +62,11 @@ npm install
 
 ### 3. Optional: create local environment file
 
-The app runs offline without API keys. The keys below are only for optional features like USDA nutrition lookup and OpenRouter AI features.
+The app runs offline without API keys. The variables below are only for optional features like USDA nutrition lookup and OpenRouter AI features.
+
+Create a `.env.local` file in the project root.
+
+On Windows:
 
 ```bash
 copy .env.example .env.local
@@ -74,7 +78,21 @@ On macOS or Linux:
 cp .env.example .env.local
 ```
 
-If you do not need those integrations, you can skip this step.
+Example `.env.local`:
+
+```env
+APP_URL=http://localhost:3000
+USDA_API_KEY=
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=qwen/qwen3.6-plus:free
+```
+
+Notes:
+
+- You can leave `USDA_API_KEY` empty if you do not need nutrition lookup.
+- You can leave `OPENROUTER_API_KEY` empty if you do not need AI features.
+- If you want pure offline use, leaving both keys empty is fine.
+- If you do not need any optional integrations, you can skip creating `.env.local` entirely.
 
 ### 4. Start the app
 
@@ -122,14 +140,25 @@ What they do:
 
 This branch includes seeded offline demo accounts:
 
-- `sarah@example.com`
-- `mike@example.com`
-- `emma@example.com`
+- `sarah@example.com` / `Password123!`
+- `mike@example.com` / `Password123!`
+- `emma@example.com` / `Password123!`
 
-Default password for those seeded demo accounts:
+Quick copy-paste login:
 
 ```text
-Password123!
+Email: sarah@example.com
+Password: Password123!
+```
+
+```text
+Email: mike@example.com
+Password: Password123!
+```
+
+```text
+Email: emma@example.com
+Password: Password123!
 ```
 
 The local database file may also include additional accounts that were created later during local testing.
@@ -197,6 +226,15 @@ If you leave these unset:
 - the app still works offline
 - USDA-based nutrition features may be unavailable
 - AI summary and AI recipe helper features may be unavailable
+
+Recommended local setup:
+
+```env
+APP_URL=http://localhost:3000
+USDA_API_KEY=
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=qwen/qwen3.6-plus:free
+```
 
 ## Troubleshooting
 
