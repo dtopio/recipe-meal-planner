@@ -45,15 +45,19 @@ router.get('/', requireAuth, requireHousehold, asyncHandler(async (req, res) => 
   const weekStartDate = typeof req.query.weekStart === 'string' && req.query.weekStart
     ? req.query.weekStart
     : toDateKey(startOfWeek())
+    
   const recurringSummary = applyRecurringMealsForWeek(req.householdId, weekStartDate)
 
   if (recurringSummary.createdCount > 0) {
     await db.save()
   }
 
+  // THE FIX: Grab ALL slots for the week, not just the recurring summary!
+  const allWeekSlots = await getMealSlotsForWeek(req.householdId, weekStartDate)
+
   sendOk(res, {
     weekStart: weekStartDate,
-    slots: recurringSummary.slots,
+    slots: allWeekSlots, // Now sending the full array back to Vue
   })
 }))
 

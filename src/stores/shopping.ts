@@ -39,7 +39,7 @@ export const useShoppingStore = defineStore('shopping', () => {
     const weekStart = periodWeekStart.value
     const weekEndDate = new Date(`${weekStart}T00:00:00`)
     weekEndDate.setDate(weekEndDate.getDate() + 6)
-    const weekEnd = weekEndDate.toISOString().split('T')[0]
+    const weekEnd = `${weekEndDate.getFullYear()}-${String(weekEndDate.getMonth() + 1).padStart(2, '0')}-${String(weekEndDate.getDate()).padStart(2, '0')}`
     const monthPrefix = today.slice(0, 7)
 
     return items.value.filter(item => {
