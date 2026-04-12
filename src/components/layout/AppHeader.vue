@@ -5,7 +5,7 @@ import { useUiStore } from '@/stores/ui'
 import { useOnline } from '@/composables/useOnline'
 import StatusBadge from '@/components/app/StatusBadge.vue'
 import { syncService } from '@/services/sync/socket'
-import { Menu, Bell, LogOut, User, Settings } from 'lucide-vue-next'
+import { Menu, Bell, LogOut, User, Settings, Sun, Moon, Monitor } from 'lucide-vue-next'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -67,6 +67,18 @@ function handleLogout() {
         >
           🏠 {{ household.household.name }}
         </span>
+
+        <!-- Theme toggle -->
+        <button
+          @click="ui.setTheme(ui.themeMode === 'dark' ? 'light' : ui.themeMode === 'light' ? 'system' : 'dark')"
+          class="flex items-center justify-center w-11 h-11 rounded-xl hover:bg-muted transition-colors"
+          :aria-label="`Theme: ${ui.themeMode}`"
+          :title="`Theme: ${ui.themeMode} (click to cycle)`"
+        >
+          <Sun v-if="ui.themeMode === 'light'" class="w-5 h-5 text-amber-500" />
+          <Moon v-else-if="ui.themeMode === 'dark'" class="w-5 h-5 text-indigo-400" />
+          <Monitor v-else class="w-5 h-5 text-muted-foreground" />
+        </button>
 
         <!-- Notifications -->
         <button

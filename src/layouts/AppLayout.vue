@@ -14,6 +14,7 @@ const pageTitle = computed(() => {
     '/dashboard': 'Dashboard',
     '/planner': 'Meal Planner',
     '/shopping-list': 'Shopping List',
+    '/pantry': 'Pantry',
     '/recipes': 'Recipes',
     '/recipes/new': 'New Recipe',
     '/recipes/import': 'Import Recipe',
@@ -62,7 +63,7 @@ const pageTitle = computed(() => {
     <!-- Main content -->
     <div class="lg:pl-[260px]">
       <AppHeader :title="pageTitle" />
-      <main class="px-5 lg:px-10 py-8 pb-28 lg:pb-10 max-w-6xl mx-auto">
+      <main class="px-5 lg:px-10 xl:px-14 py-8 pb-28 lg:pb-10 max-w-7xl mx-auto">
         <slot />
       </main>
     </div>

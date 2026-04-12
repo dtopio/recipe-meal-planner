@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRecipeStore } from '@/stores/recipes'
+import { useHouseholdStore } from '@/stores/household'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import RecipeCard from '@/components/app/RecipeCard.vue'
 import AppEmptyState from '@/components/app/AppEmptyState.vue'
@@ -10,14 +11,38 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Plus, Import, Search, Grid3x3, List, X } from 'lucide-vue-next'
 import { formatMinutes } from '@/utils/date'
+import { getPreferenceConflicts, isRecipeCompatible } from '@/utils/recipe'
+import type { Recipe } from '@/types'
 
 const router = useRouter()
 const store = useRecipeStore()
+const household = useHouseholdStore()
 const viewMode = ref<'grid' | 'list'>('grid')
+const matchPreferencesOnly = ref(false)
 
-onMounted(() => {
-  if (store.recipes.length === 0) store.loadRecipes()
+const activePreferences = computed(() => household.preferences?.dietaryPreferences || [])
+const visibleRecipes = computed(() => {
+  if (!matchPreferencesOnly.value || activePreferences.value.length === 0) {
+    return store.filteredRecipes
+  }
+
+  return store.filteredRecipes.filter(recipe => isRecipeCompatible(recipe, household.preferences))
 })
+
+const hasActiveFilters = computed(() =>
+  Boolean(store.searchQuery || store.activeTag || matchPreferencesOnly.value)
+)
+
+onMounted(async () => {
+  await Promise.all([
+    store.recipes.length === 0 ? store.loadRecipes() : Promise.resolve(),
+    localStorage.getItem('household_id') && !household.preferences ? household.loadHousehold() : Promise.resolve(),
+  ])
+})
+
+function conflictsFor(recipe: Recipe) {
+  return getPreferenceConflicts(recipe, household.preferences)
+}
 </script>
 
 <template>
@@ -100,6 +125,31 @@ onMounted(() => {
     </button>
   </div>
 
+  <div v-if="activePreferences.length" class="flex flex-col gap-3 mb-5 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex flex-wrap gap-2">
+      <span class="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
+        Household filters
+      </span>
+      <span
+        v-for="preference in activePreferences"
+        :key="preference"
+        class="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary"
+      >
+        {{ preference }}
+      </span>
+    </div>
+
+    <Button
+      variant="outline"
+      size="sm"
+      class="press-scale"
+      :class="matchPreferencesOnly ? 'border-primary/30 bg-primary/5 text-primary' : ''"
+      @click="matchPreferencesOnly = !matchPreferencesOnly"
+    >
+      {{ matchPreferencesOnly ? 'Showing only matches' : 'Only show matches' }}
+    </Button>
+  </div>
+
   <!-- Loading -->
   <div v-if="store.loading && store.recipes.length === 0" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
     <AppSkeleton v-for="i in 8" :key="i" class="h-64" />
@@ -107,35 +157,53 @@ onMounted(() => {
 
   <!-- Empty states -->
   <AppEmptyState
-    v-else-if="store.filteredRecipes.length === 0 && store.searchQuery"
+    v-else-if="visibleRecipes.length === 0 && hasActiveFilters"
+    icon="🔍"
     title="No recipes found"
-    :description="`No recipes match '${store.searchQuery}'. Try a different search.`"
-    action-label="Clear search"
-    @action="store.searchQuery = ''; store.activeTag = null"
+    description="No recipes match the current search, tags, or dietary filters. Try adjusting your criteria."
+    action-label="Clear all filters"
+    @action="store.searchQuery = ''; store.activeTag = null; matchPreferencesOnly = false"
   />
 
   <AppEmptyState
     v-else-if="store.recipes.length === 0"
-    title="No recipes yet"
-    description="Start building your recipe collection by adding or importing your first recipe."
-    action-label="Add Recipe"
+    icon="🍳"
+    title="Your recipe box is empty"
+    description="Every great kitchen starts with one recipe. Add your own or import from a URL to get started!"
+    action-label="Add Your First Recipe"
+    secondary-action-label="Import from URL"
     @action="router.push('/recipes/new')"
+    @secondary-action="router.push('/recipes/import')"
   />
 
   <!-- Grid view -->
   <div v-else-if="viewMode === 'grid'" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-    <RecipeCard
-      v-for="recipe in store.filteredRecipes"
-      :key="recipe.id"
-      :recipe="recipe"
-      @click="router.push(`/recipes/${recipe.id}`)"
-    />
+    <div v-for="recipe in visibleRecipes" :key="recipe.id" class="space-y-2">
+      <RecipeCard
+        :recipe="recipe"
+        @click="router.push(`/recipes/${recipe.id}`)"
+      />
+      <div v-if="activePreferences.length" class="px-1">
+        <span
+          v-if="conflictsFor(recipe).length"
+          class="inline-flex rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-700"
+        >
+          Conflicts: {{ conflictsFor(recipe).join(', ') }}
+        </span>
+        <span
+          v-else
+          class="inline-flex rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-700"
+        >
+          Matches household preferences
+        </span>
+      </div>
+    </div>
   </div>
 
   <!-- List view -->
   <div v-else class="space-y-2.5">
     <button
-      v-for="recipe in store.filteredRecipes"
+      v-for="recipe in visibleRecipes"
       :key="recipe.id"
       @click="router.push(`/recipes/${recipe.id}`)"
       class="w-full flex items-center gap-4 p-3.5 surface-card hover:shadow-md hover:border-primary/20 transition-all text-left press-scale"
@@ -152,6 +220,20 @@ onMounted(() => {
           <span class="font-medium">{{ formatMinutes(recipe.prepTime + recipe.cookTime) }}</span>
           <span>{{ recipe.servings }} servings</span>
           <span v-for="tag in recipe.tags.slice(0, 2)" :key="tag" class="text-primary/60 font-medium">#{{ tag }}</span>
+        </div>
+        <div v-if="activePreferences.length" class="mt-2">
+          <span
+            v-if="conflictsFor(recipe).length"
+            class="inline-flex rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-700"
+          >
+            Conflicts: {{ conflictsFor(recipe).join(', ') }}
+          </span>
+          <span
+            v-else
+            class="inline-flex rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-700"
+          >
+            Matches household preferences
+          </span>
         </div>
       </div>
     </button>

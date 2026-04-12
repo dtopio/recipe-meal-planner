@@ -1,10 +1,18 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ShoppingListItem, ShoppingCategory, AddShoppingItemDTO } from '@/types'
+import type {
+  ShoppingListItem,
+  ShoppingCategory,
+  ShoppingPeriod,
+  AddShoppingItemDTO,
+  ApiError,
+  ShoppingGenerationSummary,
+  ShoppingAiSummary,
+} from '@/types'
 import { SHOPPING_CATEGORIES } from '@/types'
-import { delay, generateId } from '@/services/api/client'
-import { mockShoppingItems } from '@/services/mock/data'
+import { apiClient } from '@/services/api/client'
 import { syncService } from '@/services/sync/socket'
+import { getDateKeyFromDateTime, getStartOfWeekDateKey, getTodayDateKey } from '@/utils/date'
 
 export const useShoppingStore = defineStore('shopping', () => {
   const items = ref<ShoppingListItem[]>([])
@@ -12,10 +20,50 @@ export const useShoppingStore = defineStore('shopping', () => {
   const error = ref<string | null>(null)
   const searchQuery = ref('')
   const filterCategory = ref<ShoppingCategory | null>(null)
+  const periodFilter = ref<ShoppingPeriod>('all')
+  const periodWeekStart = ref(getStartOfWeekDateKey())
+  const lastGenerationSummary = ref<ShoppingGenerationSummary | null>(null)
+  const aiSummary = ref<ShoppingAiSummary | null>(null)
+  const aiSummaryLoading = ref(false)
+  const aiSummaryError = ref<string | null>(null)
+  let loadPromise: Promise<void> | null = null
 
-  const uncheckedItems = computed(() => items.value.filter(i => !i.checked))
-  const checkedItems = computed(() => items.value.filter(i => i.checked))
-  const totalItems = computed(() => items.value.length)
+  const allItemCount = computed(() => items.value.length)
+
+  const periodItems = computed(() => {
+    if (periodFilter.value === 'all') {
+      return items.value
+    }
+
+    const today = getTodayDateKey()
+    const weekStart = periodWeekStart.value
+    const weekEndDate = new Date(`${weekStart}T00:00:00`)
+    weekEndDate.setDate(weekEndDate.getDate() + 6)
+    const weekEnd = weekEndDate.toISOString().split('T')[0]
+    const monthPrefix = today.slice(0, 7)
+
+    return items.value.filter(item => {
+      const itemDate = getDateKeyFromDateTime(item.addedAt)
+
+      if (periodFilter.value === 'day') {
+        return itemDate === today
+      }
+
+      if (periodFilter.value === 'week') {
+        return itemDate >= weekStart && itemDate <= weekEnd
+      }
+
+      if (periodFilter.value === 'month') {
+        return itemDate.startsWith(monthPrefix)
+      }
+
+      return true
+    })
+  })
+
+  const uncheckedItems = computed(() => periodItems.value.filter(i => !i.checked))
+  const checkedItems = computed(() => periodItems.value.filter(i => i.checked))
+  const totalItems = computed(() => periodItems.value.length)
   const remainingItems = computed(() => uncheckedItems.value.length)
 
   const progress = computed(() => {
@@ -50,89 +98,179 @@ export const useShoppingStore = defineStore('shopping', () => {
     items.value.filter(i => i.syncStatus === 'pending').length
   )
 
+  function upsertItem(item: ShoppingListItem) {
+    const index = items.value.findIndex(candidate => candidate.id === item.id)
+    if (index === -1) {
+      items.value.push(item)
+    } else {
+      items.value[index] = item
+    }
+  }
+
   async function loadItems() {
+    if (loadPromise) return loadPromise
+
     loading.value = true
     error.value = null
-    try {
-      await delay(400)
-      items.value = [...mockShoppingItems]
-    } catch (e: unknown) {
-      error.value = e instanceof Error ? e.message : 'Failed to load shopping list'
-    } finally {
-      loading.value = false
-    }
+    loadPromise = apiClient<{ items: ShoppingListItem[]; total: number }>('/shopping?limit=200')
+      .then(({ data }) => { items.value = data.items })
+      .catch((e: unknown) => { error.value = getErrorMessage(e, 'Failed to load shopping list') })
+      .finally(() => { loading.value = false; loadPromise = null })
+
+    return loadPromise
   }
 
   async function toggleItem(id: string) {
     const item = items.value.find(i => i.id === id)
     if (!item) return
 
-    // Optimistic update
+    const previousChecked = item.checked
     item.checked = !item.checked
     item.syncStatus = 'pending'
     syncService.addPending()
 
-    // Simulate sync
-    await delay(300)
-    item.syncStatus = 'synced'
-    syncService.resolvePending()
+    try {
+      const { data } = await apiClient<ShoppingListItem>(`/shopping/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ checked: item.checked }),
+      })
+
+      upsertItem(data)
+    } catch (e: unknown) {
+      item.checked = previousChecked
+      item.syncStatus = 'error'
+      error.value = getErrorMessage(e, 'Failed to update item')
+    } finally {
+      const latestItem = items.value.find(candidate => candidate.id === id)
+      if (latestItem && latestItem.syncStatus !== 'error') {
+        latestItem.syncStatus = 'synced'
+      }
+      syncService.resolvePending()
+    }
   }
 
   async function addItem(dto: AddShoppingItemDTO) {
-    const newItem: ShoppingListItem = {
-      id: generateId(),
-      householdId: localStorage.getItem('household_id') || 'h1',
-      name: dto.name,
-      quantity: dto.quantity,
-      unit: dto.unit,
-      category: dto.category,
-      checked: false,
-      addedBy: 'u1',
-      addedAt: new Date().toISOString(),
-      syncStatus: 'pending',
-    }
-
-    items.value.push(newItem)
     syncService.addPending()
+    try {
+      const { data } = await apiClient<ShoppingListItem>('/shopping', {
+        method: 'POST',
+        body: JSON.stringify(dto),
+      })
 
-    await delay(400)
-    newItem.syncStatus = 'synced'
-    syncService.resolvePending()
+      upsertItem(data)
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to add shopping item')
+      throw new Error(error.value)
+    } finally {
+      syncService.resolvePending()
+    }
   }
 
   async function removeItem(id: string) {
+    await apiClient<boolean>(`/shopping/${id}`, {
+      method: 'DELETE',
+    })
     items.value = items.value.filter(i => i.id !== id)
   }
 
-  async function clearChecked() {
-    items.value = items.value.filter(i => !i.checked)
+  async function clearChecked(weekStart?: string) {
+    const targetWeekStart = weekStart || periodWeekStart.value
+    const checkedIds = new Set(checkedItems.value.map(item => item.id))
+
+    await apiClient<boolean>('/shopping/checked', {
+      method: 'DELETE',
+      body: JSON.stringify({
+        ...(targetWeekStart ? { weekStart: targetWeekStart } : {}),
+        period: periodFilter.value,
+      }),
+    })
+    items.value = items.value.filter(i => !checkedIds.has(i.id))
+  }
+
+  async function clearAll() {
+    loading.value = true
+    error.value = null
+
+    try {
+      await apiClient<boolean>('/shopping', {
+        method: 'DELETE',
+      })
+      items.value = []
+      aiSummary.value = null
+      lastGenerationSummary.value = null
+    } catch (err: unknown) {
+      error.value = getErrorMessage(err, 'Failed to clear shopping list')
+      throw new Error(error.value)
+    } finally {
+      loading.value = false
+    }
   }
 
   async function addRecipeIngredients(recipeId: string, recipeName: string, ingredients: { name: string; quantity: number; unit: string }[]) {
     loading.value = true
     try {
-      await delay(300)
-      for (const ing of ingredients) {
-        const existing = items.value.find(i => i.name.toLowerCase() === ing.name.toLowerCase() && !i.checked)
-        if (!existing) {
-          items.value.push({
-            id: generateId(),
-            householdId: localStorage.getItem('household_id') || 'h1',
-            name: ing.name,
-            quantity: ing.quantity,
-            unit: ing.unit,
-            category: guessCategory(ing.name),
-            checked: false,
-            sourceRecipeId: recipeId,
-            sourceRecipeName: recipeName,
-            addedBy: 'u1',
-            addedAt: new Date().toISOString(),
-            syncStatus: 'synced',
-          })
-        }
+      const { data } = await apiClient<ShoppingListItem[]>('/shopping/recipe-ingredients', {
+        method: 'POST',
+        body: JSON.stringify({
+          recipeId,
+          recipeName,
+          ingredients,
+        }),
+      })
+
+      for (const item of data) {
+        upsertItem(item)
       }
     } finally {
       loading.value = false
+    }
+  }
+
+  async function generateFromPlan(weekStart?: string) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const { data } = await apiClient<ShoppingGenerationSummary>('/shopping/generate', {
+        method: 'POST',
+        body: JSON.stringify(weekStart ? { weekStart } : {}),
+      })
+
+      lastGenerationSummary.value = data
+      await loadItems()
+      return data
+    } catch (err: unknown) {
+      error.value = getErrorMessage(err, 'Failed to generate shopping list')
+      throw new Error(error.value)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function generateSummary(weekStart?: string, force = false, period = periodFilter.value) {
+    if (!force && aiSummary.value && (!weekStart || aiSummary.value.weekStart === weekStart) && aiSummary.value.period === period) {
+      return aiSummary.value
+    }
+
+    aiSummaryLoading.value = true
+    aiSummaryError.value = null
+
+    try {
+      const { data } = await apiClient<ShoppingAiSummary>('/shopping/summary', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...(weekStart ? { weekStart } : {}),
+          period,
+        }),
+      })
+
+      aiSummary.value = data
+      return data
+    } catch (err: unknown) {
+      aiSummaryError.value = getErrorMessage(err, 'Failed to generate shopping summary')
+      throw new Error(aiSummaryError.value)
+    } finally {
+      aiSummaryLoading.value = false
     }
   }
 
@@ -142,6 +280,14 @@ export const useShoppingStore = defineStore('shopping', () => {
     error,
     searchQuery,
     filterCategory,
+    periodFilter,
+    periodWeekStart,
+    lastGenerationSummary,
+    aiSummary,
+    aiSummaryLoading,
+    aiSummaryError,
+    allItemCount,
+    periodItems,
     uncheckedItems,
     checkedItems,
     totalItems,
@@ -155,18 +301,17 @@ export const useShoppingStore = defineStore('shopping', () => {
     addItem,
     removeItem,
     clearChecked,
+    clearAll,
     addRecipeIngredients,
+    generateFromPlan,
+    generateSummary,
   }
 })
 
-/** Simple category guesser based on ingredient name */
-function guessCategory(name: string): ShoppingCategory {
-  const n = name.toLowerCase()
-  if (/lettuce|tomato|onion|garlic|pepper|basil|mushroom|broccoli|avocado|lime|lemon|cucumber|berry|fruit/.test(n)) return 'produce'
-  if (/milk|yogurt|cheese|cream|egg|butter/.test(n)) return 'dairy'
-  if (/chicken|beef|pork|salmon|fish|pancetta|shrimp|meat/.test(n)) return 'meat'
-  if (/bread|tortilla|brioche|bun|roll/.test(n)) return 'bakery'
-  if (/frozen/.test(n)) return 'frozen'
-  if (/paper|soap|sponge|wrap|foil|bag/.test(n)) return 'household'
-  return 'pantry'
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (typeof error === 'object' && error && 'message' in error) {
+    return String((error as ApiError).message)
+  }
+
+  return fallback
 }

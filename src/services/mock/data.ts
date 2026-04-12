@@ -7,6 +7,7 @@ import type {
   MealSlot,
   ShoppingListItem,
 } from '@/types'
+import { DEFAULT_HEALTH_TARGETS } from '@/types'
 
 // ─── Current User ─────────────────────────────────────────────
 export const mockCurrentUser: User = {
@@ -15,6 +16,7 @@ export const mockCurrentUser: User = {
   displayName: 'Sarah Chen',
   avatarUrl: undefined,
   createdAt: '2025-12-01T10:00:00Z',
+  healthTargets: { ...DEFAULT_HEALTH_TARGETS },
 }
 
 // ─── Household ────────────────────────────────────────────────

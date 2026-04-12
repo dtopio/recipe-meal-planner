@@ -3,7 +3,7 @@ defineProps<{
   title: string
   description?: string
   icon?: string
-  color?: 'primary' | 'amber' | 'blue' | 'violet'
+  color?: 'primary' | 'amber' | 'blue' | 'violet' | 'emerald'
 }>()
 
 defineEmits<{
@@ -15,6 +15,7 @@ const colorClasses = {
   amber: 'bg-amber-500/8 text-amber-600 hover:bg-amber-500/12 border-amber-500/10',
   blue: 'bg-blue-500/8 text-blue-600 hover:bg-blue-500/12 border-blue-500/10',
   violet: 'bg-violet-500/8 text-violet-600 hover:bg-violet-500/12 border-violet-500/10',
+  emerald: 'bg-emerald-500/8 text-emerald-600 hover:bg-emerald-500/12 border-emerald-500/10',
 }
 </script>
 
@@ -24,7 +25,7 @@ const colorClasses = {
     class="flex items-center gap-3 rounded-xl p-3.5 transition-all duration-200 text-left w-full border press-scale"
     :class="colorClasses[color || 'primary']"
   >
-    <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-white/70 shadow-sm">
+    <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-white/70 dark:bg-white/10 shadow-sm">
       <slot name="icon">
         <span class="text-lg">{{ icon || '✨' }}</span>
       </slot>

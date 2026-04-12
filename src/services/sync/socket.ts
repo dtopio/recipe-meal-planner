@@ -2,8 +2,8 @@ import type { ConnectionStatus, SyncEvent } from '@/types'
 import { ref } from 'vue'
 
 /**
- * WebSocket sync service abstraction.
- * Currently uses mock events; ready for real WebSocket integration.
+ * Lightweight sync status abstraction.
+ * Uses the API health endpoint so the UI status reflects the actual backend.
  */
 class SyncService {
   status = ref<ConnectionStatus>('disconnected')
@@ -11,18 +11,33 @@ class SyncService {
   private listeners = new Map<string, Set<(payload: unknown) => void>>()
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
-  connect() {
-    // Simulate connection
+  async connect() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+
     this.status.value = 'reconnecting'
-    setTimeout(() => {
+
+    try {
+      const response = await fetch('/api/health')
+      if (!response.ok) {
+        throw new Error('Health check failed')
+      }
       this.status.value = 'connected'
-    }, 800)
+    } catch {
+      this.status.value = 'disconnected'
+      this.reconnectTimer = setTimeout(() => {
+        this.connect()
+      }, 3000)
+    }
   }
 
   disconnect() {
     this.status.value = 'disconnected'
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
     }
   }
 

@@ -1,14 +1,9 @@
 import type { ApiResponse, ApiError } from '@/types'
 
 const BASE_URL = import.meta.env.VITE_API_URL || '/api'
-const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false' // default true
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 
 export { USE_MOCK }
-
-/** Simulates network latency for mock responses */
-export function delay(ms = 400): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms + Math.random() * 200))
-}
 
 /** Generic fetch wrapper with auth headers and error handling */
 export async function apiClient<T>(
@@ -28,12 +23,28 @@ export async function apiClient<T>(
     headers,
   })
 
+  const isJson = response.headers.get('content-type')?.includes('application/json')
+
   if (!response.ok) {
-    const error: ApiError = await response.json().catch(() => ({
-      message: 'An unexpected error occurred',
-      statusCode: response.status,
-    }))
+    const error: ApiError = isJson
+      ? await response.json().catch(() => ({
+          message: 'An unexpected error occurred',
+          statusCode: response.status,
+        }))
+      : {
+          message: await response.text().catch(() => 'An unexpected error occurred'),
+          statusCode: response.status,
+        }
+
     throw error
+  }
+
+  if (response.status === 204) {
+    return { data: undefined as T }
+  }
+
+  if (!isJson) {
+    return { data: undefined as T }
   }
 
   return response.json()

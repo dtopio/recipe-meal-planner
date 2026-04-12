@@ -92,9 +92,21 @@ const routes: RouteRecordRaw[] = [
     meta: { layout: 'app', requiresAuth: true, requiresHousehold: true },
   },
   {
+    path: '/weekly-report',
+    name: 'weekly-report',
+    component: () => import('@/views/WeeklyReportPage.vue'),
+    meta: { layout: 'app', requiresAuth: true, requiresHousehold: true },
+  },
+  {
     path: '/shopping-list',
     name: 'shopping-list',
     component: () => import('@/views/ShoppingListPage.vue'),
+    meta: { layout: 'app', requiresAuth: true, requiresHousehold: true },
+  },
+  {
+    path: '/pantry',
+    name: 'pantry',
+    component: () => import('@/views/PantryPage.vue'),
     meta: { layout: 'app', requiresAuth: true, requiresHousehold: true },
   },
   {

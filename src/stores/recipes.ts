@@ -1,8 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Recipe, CreateRecipeDTO, UpdateRecipeDTO, ImportRecipeDTO } from '@/types'
-import { delay, generateId } from '@/services/api/client'
-import { mockRecipes, getAllTags } from '@/services/mock/data'
+import type { Recipe, CreateRecipeDTO, UpdateRecipeDTO, ImportRecipeDTO, ApiError } from '@/types'
+import { apiClient } from '@/services/api/client'
 
 export const useRecipeStore = defineStore('recipes', () => {
   const recipes = ref<Recipe[]>([])
@@ -11,8 +10,11 @@ export const useRecipeStore = defineStore('recipes', () => {
   const searchQuery = ref('')
   const activeTag = ref<string | null>(null)
   const sortBy = ref<'newest' | 'name' | 'prep-time'>('newest')
+  let loadPromise: Promise<void> | null = null
 
-  const allTags = computed(() => getAllTags())
+  const allTags = computed(() =>
+    Array.from(new Set(recipes.value.flatMap(recipe => recipe.tags))).sort()
+  )
 
   const filteredRecipes = computed(() => {
     let result = [...recipes.value]
@@ -47,16 +49,16 @@ export const useRecipeStore = defineStore('recipes', () => {
   })
 
   async function loadRecipes() {
+    if (loadPromise) return loadPromise
+
     loading.value = true
     error.value = null
-    try {
-      await delay(400)
-      recipes.value = [...mockRecipes]
-    } catch (e: unknown) {
-      error.value = e instanceof Error ? e.message : 'Failed to load recipes'
-    } finally {
-      loading.value = false
-    }
+    loadPromise = apiClient<{ items: Recipe[]; total: number }>('/recipes?limit=200')
+      .then(({ data }) => { recipes.value = data.items })
+      .catch((e: unknown) => { error.value = getErrorMessage(e, 'Failed to load recipes') })
+      .finally(() => { loading.value = false; loadPromise = null })
+
+    return loadPromise
   }
 
   function getRecipe(id: string): Recipe | undefined {
@@ -67,21 +69,16 @@ export const useRecipeStore = defineStore('recipes', () => {
     loading.value = true
     error.value = null
     try {
-      await delay(600)
-      const recipe: Recipe = {
-        id: generateId(),
-        householdId: localStorage.getItem('household_id') || 'h1',
-        ...dto,
-        ingredients: dto.ingredients.map(ing => ({ ...ing, id: generateId() })),
-        createdBy: 'u1',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }
+      const { data: recipe } = await apiClient<Recipe>('/recipes', {
+        method: 'POST',
+        body: JSON.stringify(dto),
+      })
+
       recipes.value.unshift(recipe)
       return recipe
     } catch (e: unknown) {
-      error.value = e instanceof Error ? e.message : 'Failed to create recipe'
-      throw e
+      error.value = getErrorMessage(e, 'Failed to create recipe')
+      throw new Error(error.value)
     } finally {
       loading.value = false
     }
@@ -91,23 +88,32 @@ export const useRecipeStore = defineStore('recipes', () => {
     loading.value = true
     error.value = null
     try {
-      await delay(500)
-      const idx = recipes.value.findIndex(r => r.id === dto.id)
-      if (idx === -1) throw new Error('Recipe not found')
+      const { data: updated } = await apiClient<Recipe>(`/recipes/${dto.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          title: dto.title,
+          description: dto.description,
+          imageUrl: dto.imageUrl,
+          prepTime: dto.prepTime,
+          cookTime: dto.cookTime,
+          servings: dto.servings,
+          tags: dto.tags,
+          ingredients: dto.ingredients,
+          instructions: dto.instructions,
+        }),
+      })
 
-      const updated: Recipe = {
-        ...recipes.value[idx],
-        ...dto,
-        ingredients: dto.ingredients
-          ? dto.ingredients.map(ing => ({ ...ing, id: ('id' in ing ? (ing as { id: string }).id : generateId()) }))
-          : recipes.value[idx].ingredients,
-        updatedAt: new Date().toISOString(),
+      const idx = recipes.value.findIndex(r => r.id === dto.id)
+      if (idx === -1) {
+        recipes.value.unshift(updated)
+      } else {
+        recipes.value[idx] = updated
       }
-      recipes.value[idx] = updated
+
       return updated
     } catch (e: unknown) {
-      error.value = e instanceof Error ? e.message : 'Failed to update recipe'
-      throw e
+      error.value = getErrorMessage(e, 'Failed to update recipe')
+      throw new Error(error.value)
     } finally {
       loading.value = false
     }
@@ -117,49 +123,25 @@ export const useRecipeStore = defineStore('recipes', () => {
     loading.value = true
     error.value = null
     try {
-      await delay(2000) // Simulate parsing
-      // Check for duplicate source URL
-      const existing = recipes.value.find(r => r.sourceUrl === dto.url)
-      if (existing) {
-        throw new Error(`DUPLICATE:${existing.id}:${existing.title}`)
-      }
-      // Mock imported recipe
-      const recipe: Recipe = {
-        id: generateId(),
-        householdId: localStorage.getItem('household_id') || 'h1',
-        title: 'Imported: Mediterranean Quinoa Bowl',
-        description: 'A vibrant, healthy quinoa bowl with roasted vegetables, feta, and lemon-herb dressing.',
-        imageUrl: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=600&h=400&fit=crop',
-        prepTime: 15,
-        cookTime: 25,
-        servings: 4,
-        tags: ['healthy', 'mediterranean', 'lunch', 'vegetarian'],
-        ingredients: [
-          { id: generateId(), quantity: 1, unit: 'cup', name: 'quinoa' },
-          { id: generateId(), quantity: 1, unit: 'can', name: 'chickpeas, drained' },
-          { id: generateId(), quantity: 1, unit: 'cup', name: 'cherry tomatoes, halved' },
-          { id: generateId(), quantity: 1, unit: '', name: 'cucumber, diced' },
-          { id: generateId(), quantity: 0.5, unit: 'cup', name: 'feta cheese, crumbled' },
-          { id: generateId(), quantity: 0.25, unit: 'cup', name: 'kalamata olives' },
-          { id: generateId(), quantity: 3, unit: 'tbsp', name: 'lemon-herb dressing' },
-        ],
-        instructions: [
-          'Cook quinoa according to package directions. Let cool slightly.',
-          'Roast chickpeas at 400°F for 20 minutes until crispy.',
-          'Combine quinoa, tomatoes, cucumber, and olives in a large bowl.',
-          'Top with crispy chickpeas and crumbled feta.',
-          'Drizzle with lemon-herb dressing and serve.',
-        ],
-        sourceUrl: dto.url,
-        createdBy: 'u1',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }
+      const { data: recipe } = await apiClient<Recipe>('/recipes/import', {
+        method: 'POST',
+        body: JSON.stringify(dto),
+      })
+
       recipes.value.unshift(recipe)
       return recipe
     } catch (e: unknown) {
-      error.value = e instanceof Error ? e.message : 'Failed to import recipe'
-      throw e
+      const apiError = e as ApiError
+      error.value = getErrorMessage(e, 'Failed to import recipe')
+
+      if (apiError?.code === 'DUPLICATE_RECIPE_SOURCE') {
+        const existingRecipe = apiError.details?.existingRecipe as { id?: string; title?: string } | undefined
+        if (existingRecipe?.id && existingRecipe?.title) {
+          throw new Error(`DUPLICATE:${existingRecipe.id}:${existingRecipe.title}`)
+        }
+      }
+
+      throw new Error(error.value)
     } finally {
       loading.value = false
     }
@@ -168,7 +150,9 @@ export const useRecipeStore = defineStore('recipes', () => {
   async function deleteRecipe(id: string) {
     loading.value = true
     try {
-      await delay(300)
+      await apiClient<boolean>(`/recipes/${id}`, {
+        method: 'DELETE',
+      })
       recipes.value = recipes.value.filter(r => r.id !== id)
     } finally {
       loading.value = false
@@ -192,3 +176,11 @@ export const useRecipeStore = defineStore('recipes', () => {
     deleteRecipe,
   }
 })
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (typeof error === 'object' && error && 'message' in error) {
+    return String((error as ApiError).message)
+  }
+
+  return fallback
+}

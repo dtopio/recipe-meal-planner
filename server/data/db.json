@@ -1,0 +1,1946 @@
+{
+  "users": [
+    {
+      "id": "u1",
+      "email": "sarah@example.com",
+      "password": "$2b$10$HC.BWjix1m0dDcP5TJ5QReSN6VPQY8KcywMtfa8qe45d597uP6aqi",
+      "displayName": "Sarah Chen",
+      "createdAt": "2025-12-07T01:34:44.298Z",
+      "currentHouseholdId": "h1",
+      "healthTargets": {
+        "calories": 2100,
+        "protein": 130,
+        "carbs": 250,
+        "fat": 70
+      }
+    },
+    {
+      "id": "u2",
+      "email": "mike@example.com",
+      "password": "$2b$10$HC.BWjix1m0dDcP5TJ5QReSN6VPQY8KcywMtfa8qe45d597uP6aqi",
+      "displayName": "Mike Park",
+      "createdAt": "2025-12-17T01:34:44.298Z",
+      "currentHouseholdId": "h1",
+      "healthTargets": {
+        "calories": 2400,
+        "protein": 150,
+        "carbs": 250,
+        "fat": 70
+      }
+    },
+    {
+      "id": "u3",
+      "email": "emma@example.com",
+      "password": "$2b$10$HC.BWjix1m0dDcP5TJ5QReSN6VPQY8KcywMtfa8qe45d597uP6aqi",
+      "displayName": "Emma Park",
+      "createdAt": "2026-01-01T01:34:44.298Z",
+      "currentHouseholdId": "h1",
+      "healthTargets": {
+        "calories": 1800,
+        "protein": 100,
+        "carbs": 250,
+        "fat": 70
+      }
+    },
+    {
+      "id": "user_a22843baacc2",
+      "email": "test@example.com",
+      "password": "$2b$10$hnmBZYMnDsZoTVB3hvR8pu90IwOjuxPN5AkZl2sUXYfvW1h8Vn86a",
+      "displayName": "Test User",
+      "createdAt": "2026-04-06T01:34:48.899Z",
+      "healthTargets": {
+        "calories": 2000,
+        "protein": 120,
+        "carbs": 250,
+        "fat": 70
+      }
+    },
+    {
+      "id": "user_c821f616e1ae",
+      "email": "newuser@example.com",
+      "password": "$2b$10$w0k9ud6GSEjtiqKZIDBw5O32Rf5fb7SoASKbnoZoQhHQTBGqRkvYW",
+      "displayName": "New User",
+      "createdAt": "2026-04-06T01:35:05.835Z",
+      "healthTargets": {
+        "calories": 2000,
+        "protein": 120,
+        "carbs": 250,
+        "fat": 70
+      }
+    }
+  ],
+  "households": [
+    {
+      "id": "h1",
+      "name": "The Chen-Park Home",
+      "color": "#22c55e",
+      "createdAt": "2025-12-07T01:34:44.298Z"
+    }
+  ],
+  "householdMembers": [
+    {
+      "id": "m1",
+      "userId": "u1",
+      "householdId": "h1",
+      "displayName": "Sarah Chen",
+      "role": "admin",
+      "joinedAt": "2025-12-07T01:34:44.298Z"
+    },
+    {
+      "id": "m2",
+      "userId": "u2",
+      "householdId": "h1",
+      "displayName": "Mike Park",
+      "role": "member",
+      "joinedAt": "2025-12-17T01:34:44.298Z"
+    },
+    {
+      "id": "m3",
+      "userId": "u3",
+      "householdId": "h1",
+      "displayName": "Emma Park",
+      "role": "member",
+      "joinedAt": "2026-01-01T01:34:44.298Z"
+    }
+  ],
+  "invites": [
+    {
+      "code": "CHEN-PARK-1C8A",
+      "householdId": "h1",
+      "expiresAt": "2026-04-13T01:34:44.299Z",
+      "createdBy": "u1"
+    }
+  ],
+  "householdPreferences": [
+    {
+      "householdId": "h1",
+      "dietaryPreferences": [
+        "nut-free"
+      ],
+      "mealPeriods": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ]
+    }
+  ],
+  "recipes": [
+    {
+      "id": "r1",
+      "householdId": "h1",
+      "title": "Grilled Chicken Caesar Salad",
+      "description": "A crisp Caesar salad with grilled chicken, shaved parmesan, and a bright creamy dressing.",
+      "imageUrl": "https://images.unsplash.com/photo-1546793665-c74683f339c1?w=600&h=400&fit=crop",
+      "prepTime": 15,
+      "cookTime": 20,
+      "servings": 4,
+      "tags": [
+        "healthy",
+        "salad",
+        "quick",
+        "high-protein"
+      ],
+      "ingredients": [
+        {
+          "id": "ing_743e9ee16052",
+          "quantity": 2,
+          "unit": "lbs",
+          "name": "chicken breast"
+        },
+        {
+          "id": "ing_d8cf61814b85",
+          "quantity": 1,
+          "unit": "head",
+          "name": "romaine lettuce"
+        },
+        {
+          "id": "ing_0dff95e4a135",
+          "quantity": 0.5,
+          "unit": "cup",
+          "name": "parmesan cheese, shaved"
+        },
+        {
+          "id": "ing_5d71ed1c1928",
+          "quantity": 1,
+          "unit": "cup",
+          "name": "croutons"
+        },
+        {
+          "id": "ing_64f53bcd35de",
+          "quantity": 0.25,
+          "unit": "cup",
+          "name": "Caesar dressing"
+        }
+      ],
+      "instructions": [
+        "Season the chicken with olive oil, salt, and pepper.",
+        "Grill over medium-high heat until cooked through, then rest and slice.",
+        "Toss the romaine with dressing in a large bowl.",
+        "Top with sliced chicken, parmesan, and croutons.",
+        "Serve immediately."
+      ],
+      "createdBy": "u1",
+      "createdAt": "2026-03-25T01:34:44.299Z",
+      "updatedAt": "2026-03-25T01:34:44.299Z"
+    },
+    {
+      "id": "r2",
+      "householdId": "h1",
+      "title": "Creamy Pasta Carbonara",
+      "description": "An easy carbonara with crispy pancetta, eggs, pecorino, and lots of black pepper.",
+      "imageUrl": "https://images.unsplash.com/photo-1612874742237-6526221588e3?w=600&h=400&fit=crop",
+      "prepTime": 10,
+      "cookTime": 20,
+      "servings": 4,
+      "tags": [
+        "italian",
+        "pasta",
+        "comfort-food",
+        "dinner"
+      ],
+      "ingredients": [
+        {
+          "id": "ing_2d7b40dbe7dc",
+          "quantity": 1,
+          "unit": "lb",
+          "name": "spaghetti"
+        },
+        {
+          "id": "ing_6394b80b6394",
+          "quantity": 6,
+          "unit": "oz",
+          "name": "pancetta"
+        },
+        {
+          "id": "ing_f2dc8c8747df",
+          "quantity": 4,
+          "unit": "",
+          "name": "eggs"
+        },
+        {
+          "id": "ing_7ab4fc1848de",
+          "quantity": 1,
+          "unit": "cup",
+          "name": "pecorino romano, grated"
+        },
+        {
+          "id": "ing_8d474d536ff5",
+          "quantity": 1,
+          "unit": "tsp",
+          "name": "black pepper"
+        }
+      ],
+      "instructions": [
+        "Cook the spaghetti in well-salted water.",
+        "Render the pancetta in a skillet until crisp.",
+        "Whisk eggs, cheese, and pepper in a bowl.",
+        "Toss the hot pasta with pancetta, then add the egg mixture off the heat.",
+        "Loosen with pasta water until silky, then serve."
+      ],
+      "createdBy": "u2",
+      "createdAt": "2026-03-27T01:34:44.299Z",
+      "updatedAt": "2026-03-27T01:34:44.299Z"
+    },
+    {
+      "id": "r3",
+      "householdId": "h1",
+      "title": "Thai Green Curry",
+      "description": "Fragrant green curry with chicken, coconut milk, bamboo shoots, and Thai basil.",
+      "imageUrl": "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=600&h=400&fit=crop",
+      "prepTime": 15,
+      "cookTime": 25,
+      "servings": 4,
+      "tags": [
+        "thai",
+        "curry",
+        "spicy",
+        "dinner"
+      ],
+      "ingredients": [
+        {
+          "id": "ing_4c14d84b0e70",
+          "quantity": 1.5,
+          "unit": "lbs",
+          "name": "chicken thighs"
+        },
+        {
+          "id": "ing_d0e958902271",
+          "quantity": 3,
+          "unit": "tbsp",
+          "name": "green curry paste"
+        },
+        {
+          "id": "ing_7ba39b50974f",
+          "quantity": 1,
+          "unit": "can",
+          "name": "coconut milk"
+        },
+        {
+          "id": "ing_e35db0ca7850",
+          "quantity": 1,
+          "unit": "cup",
+          "name": "bamboo shoots"
+        },
+        {
+          "id": "ing_4da8509ba516",
+          "quantity": 1,
+          "unit": "cup",
+          "name": "Thai basil leaves"
+        }
+      ],
+      "instructions": [
+        "Cook the rice according to package directions.",
+        "Fry the curry paste in a little coconut cream until fragrant.",
+        "Add the chicken and cook until lightly browned.",
+        "Pour in the remaining coconut milk and simmer with bamboo shoots.",
+        "Finish with Thai basil and serve over rice."
+      ],
+      "createdBy": "u1",
+      "createdAt": "2026-03-29T01:34:44.299Z",
+      "updatedAt": "2026-03-29T01:34:44.299Z"
+    },
+    {
+      "id": "r4",
+      "householdId": "h1",
+      "title": "Overnight Oats with Berries",
+      "description": "No-cook overnight oats layered with berries, yogurt, honey, and vanilla.",
+      "imageUrl": "https://images.unsplash.com/photo-1517673400267-0251440c45dc?w=600&h=400&fit=crop",
+      "prepTime": 5,
+      "cookTime": 0,
+      "servings": 2,
+      "tags": [
+        "breakfast",
+        "healthy",
+        "no-cook",
+        "meal-prep"
+      ],
+      "ingredients": [
+        {
+          "id": "ing_9ea429dd8f9d",
+          "quantity": 1,
+          "unit": "cup",
+          "name": "rolled oats"
+        },
+        {
+          "id": "ing_a1e6875ca930",
+          "quantity": 1,
+          "unit": "cup",
+          "name": "milk"
+        },
+        {
+          "id": "ing_93c25e77504e",
+          "quantity": 0.5,
+          "unit": "cup",
+          "name": "Greek yogurt"
+        },
+        {
+          "id": "ing_16b2c73c8115",
+          "quantity": 1,
+          "unit": "cup",
+          "name": "mixed berries"
+        },
+        {
+          "id": "ing_80a745595628",
+          "quantity": 2,
+          "unit": "tbsp",
+          "name": "honey"
+        }
+      ],
+      "instructions": [
+        "Stir together oats, milk, yogurt, and honey.",
+        "Top with berries and refrigerate overnight.",
+        "Serve chilled in the morning."
+      ],
+      "createdBy": "u3",
+      "createdAt": "2026-03-30T01:34:44.299Z",
+      "updatedAt": "2026-03-30T01:34:44.299Z"
+    },
+    {
+      "id": "r5",
+      "householdId": "h1",
+      "title": "Black Bean Tacos",
+      "description": "Fast vegetarian tacos with seasoned black beans, avocado, pico, and lime.",
+      "imageUrl": "https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=600&h=400&fit=crop",
+      "prepTime": 10,
+      "cookTime": 10,
+      "servings": 4,
+      "tags": [
+        "vegetarian",
+        "mexican",
+        "quick",
+        "dinner"
+      ],
+      "ingredients": [
+        {
+          "id": "ing_2ce446c7135c",
+          "quantity": 2,
+          "unit": "cans",
+          "name": "black beans"
+        },
+        {
+          "id": "ing_56476386e2b2",
+          "quantity": 8,
+          "unit": "",
+          "name": "corn tortillas"
+        },
+        {
+          "id": "ing_67a3c77b8a5a",
+          "quantity": 2,
+          "unit": "",
+          "name": "avocados"
+        },
+        {
+          "id": "ing_9d6dee90062d",
+          "quantity": 1,
+          "unit": "cup",
+          "name": "pico de gallo"
+        },
+        {
+          "id": "ing_0aefad252e8d",
+          "quantity": 2,
+          "unit": "",
+          "name": "limes"
+        }
+      ],
+      "instructions": [
+        "Warm the beans with cumin and chili powder.",
+        "Heat the tortillas until soft and lightly charred.",
+        "Slice the avocados and prep the toppings.",
+        "Assemble the tacos and serve with lime wedges."
+      ],
+      "createdBy": "u2",
+      "createdAt": "2026-03-31T01:34:44.299Z",
+      "updatedAt": "2026-03-31T01:34:44.299Z"
+    },
+    {
+      "id": "r6",
+      "householdId": "h1",
+      "title": "Honey Garlic Salmon",
+      "description": "Pan-seared salmon glazed in a sweet, savory honey garlic sauce with roasted vegetables.",
+      "imageUrl": "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=600&h=400&fit=crop",
+      "prepTime": 10,
+      "cookTime": 20,
+      "servings": 4,
+      "tags": [
+        "seafood",
+        "healthy",
+        "dinner",
+        "high-protein"
+      ],
+      "ingredients": [
+        {
+          "id": "ing_a8a3688ef4e5",
+          "quantity": 4,
+          "unit": "",
+          "name": "salmon fillets"
+        },
+        {
+          "id": "ing_a1ef5d212690",
+          "quantity": 3,
+          "unit": "tbsp",
+          "name": "honey"
+        },
+        {
+          "id": "ing_820202d8e73a",
+          "quantity": 3,
+          "unit": "cloves",
+          "name": "garlic"
+        },
+        {
+          "id": "ing_cd2c96eff609",
+          "quantity": 2,
+          "unit": "tbsp",
+          "name": "soy sauce"
+        },
+        {
+          "id": "ing_c7d0a9129b95",
+          "quantity": 1,
+          "unit": "lb",
+          "name": "broccoli florets"
+        }
+      ],
+      "instructions": [
+        "Roast the vegetables until tender.",
+        "Whisk together honey, garlic, and soy sauce.",
+        "Sear the salmon until golden.",
+        "Add the glaze and spoon it over the salmon until glossy.",
+        "Serve with the roasted vegetables."
+      ],
+      "createdBy": "u1",
+      "createdAt": "2026-04-02T01:34:44.299Z",
+      "updatedAt": "2026-04-02T01:34:44.299Z"
+    },
+    {
+      "id": "recipe_9b648c2d2013",
+      "householdId": "h1",
+      "title": "Vietnamese Pho recipe",
+      "description": "Recipe video above. Experience the magic of one of the greatest soups in the world with this easy to follow traditional recipe! The depth of flavour in the broth will blow you away - it looks so clear and light but it&#x27;s packed with flavour!",
+      "imageUrl": "https://www.recipetineats.com/tachyon/2019/04/Beef-Pho_6.jpg",
+      "prepTime": 20,
+      "cookTime": 180,
+      "servings": 6,
+      "tags": [
+        "mains",
+        "soup",
+        "vietnamese",
+        "beef pho",
+        "pho",
+        "pho recipe"
+      ],
+      "ingredients": [
+        {
+          "id": "ing_325f789b9be5",
+          "quantity": 2,
+          "unit": "",
+          "name": "large onions (, halved)"
+        },
+        {
+          "id": "ing_87ba691f598c",
+          "quantity": 1,
+          "unit": "",
+          "name": "150g / 5oz ginger (, sliced down the centre)"
+        },
+        {
+          "id": "ing_5a969753a5f0",
+          "quantity": 10,
+          "unit": "",
+          "name": "star anise"
+        },
+        {
+          "id": "ing_a2371fa1c840",
+          "quantity": 4,
+          "unit": "",
+          "name": "cinnamon quills"
+        },
+        {
+          "id": "ing_36b47cf88eff",
+          "quantity": 4,
+          "unit": "",
+          "name": "cardamon pods"
+        },
+        {
+          "id": "ing_2a0f433d9c0f",
+          "quantity": 3,
+          "unit": "cloves",
+          "name": "((the spice cloves!))"
+        },
+        {
+          "id": "ing_c13e12f993c6",
+          "quantity": 1.5,
+          "unit": "tbsp",
+          "name": "coriander seeds"
+        },
+        {
+          "id": "ing_c954bdf991c5",
+          "quantity": 1,
+          "unit": "",
+          "name": "1.5kg / 3lb beef brisket"
+        },
+        {
+          "id": "ing_75920631a1e6",
+          "quantity": 1,
+          "unit": "",
+          "name": "1kg / 2lb meaty beef bones"
+        },
+        {
+          "id": "ing_e5e00e16623f",
+          "quantity": 1,
+          "unit": "",
+          "name": "1kg / 2lb marrow bones ((leg, knuckle), cut to reveal marrow)"
+        },
+        {
+          "id": "ing_484e7f7ac536",
+          "quantity": 3.5,
+          "unit": "",
+          "name": "litres / 3.75 quarts water ((15 cups))"
+        },
+        {
+          "id": "ing_7af58ec62567",
+          "quantity": 2,
+          "unit": "tbsp",
+          "name": "white sugar"
+        },
+        {
+          "id": "ing_e797189a95ca",
+          "quantity": 1,
+          "unit": "tbsp",
+          "name": "salt"
+        },
+        {
+          "id": "ing_c8114517cc3c",
+          "quantity": 40,
+          "unit": "ml",
+          "name": "/ 3 tbsp fish sauce ((Note 2))"
+        },
+        {
+          "id": "ing_2360ad403051",
+          "quantity": 1,
+          "unit": "",
+          "name": "50g / 1.5 oz dried rice sticks ((or 120g/4oz fresh) (Note 3))"
+        },
+        {
+          "id": "ing_51462723c65c",
+          "quantity": 1,
+          "unit": "",
+          "name": "30g / 1 oz beef tenderloin, raw, very thinly sliced ((Note 4))"
+        },
+        {
+          "id": "ing_eb5ff29fde2b",
+          "quantity": 3,
+          "unit": "",
+          "name": "- 5 brisket slices ((used for broth))"
+        },
+        {
+          "id": "ing_11f3247b70bf",
+          "quantity": 1,
+          "unit": "",
+          "name": "Beansprouts, handful"
+        },
+        {
+          "id": "ing_41e6d02b34ec",
+          "quantity": 1,
+          "unit": "",
+          "name": "Thai basil, 3 - 5 sprigs"
+        },
+        {
+          "id": "ing_b9c5a072b7cf",
+          "quantity": 1,
+          "unit": "",
+          "name": "Coriander/cilantro, 3 - 5 sprigs ((or more basil))"
+        },
+        {
+          "id": "ing_578493b319ec",
+          "quantity": 1,
+          "unit": "",
+          "name": "Lime wedges*"
+        },
+        {
+          "id": "ing_6df3b17440f9",
+          "quantity": 1,
+          "unit": "",
+          "name": "Finely sliced red chilli*"
+        },
+        {
+          "id": "ing_41e81a2133c4",
+          "quantity": 1,
+          "unit": "",
+          "name": "Hoisin sauce*"
+        },
+        {
+          "id": "ing_4af2695ccf39",
+          "quantity": 1,
+          "unit": "",
+          "name": "Sriracha* ((for spiciness))"
+        }
+      ],
+      "instructions": [
+        "Heat a heavy based skillet over high heat (no oil) until smoking.",
+        "Place onion and ginger in pan cut side down. Cook for a few minutes until it's charred, then turn. Remove and set aside.",
+        "Toast Spices lightly in a dry skillet over medium high heat for 3 minutes.",
+        "Rinse bones & brisket then cover with water in large stock pot.",
+        "Boil for 5 minutes, then drain.",
+        "Rinse each bone and brisket under tap water.",
+        "Wipe pot clean, bring 3.5 litres / 3.75 quarts water to boil.",
+        "Add bones and brisket, onion, ginger, Spices",
+        "Add onion, ginger, Spices, sugar and salt - water should just barely cover everything.",
+        "Cover with lid, simmer 3 hours.",
+        "Remove brisket (should be fall-apart tender), cool then refrigerate for later.",
+        "Simmer remaining soup UNCOVERED for 40 minutes.",
+        "Strain broth into another pot, discard bones and spices. Should be about 2.5 litres / 2.65 quarts (10 cups), if loads more, reduce.",
+        "Add fish sauce, adjust salt and sugar if needed. Broth should be beefy, fragrant with spices, savoury and barely sweet.",
+        "Prepare rice noodles per packet, just prior to serving.",
+        "Place noodles in bowl. Top with raw beef and brisket.",
+        "Ladle over about 400 / 14 oz hot broth - will cook beef to medium rare.",
+        "Serve with Toppings on the side!"
+      ],
+      "sourceUrl": "https://www.recipetineats.com/vietnamese-pho-recipe/",
+      "createdBy": "u1",
+      "createdAt": "2026-04-11T05:54:03.344Z",
+      "updatedAt": "2026-04-11T05:54:03.344Z"
+    }
+  ],
+  "mealAssignments": [
+    {
+      "id": "slot_9038ef1a970f",
+      "householdId": "h1",
+      "date": "2026-04-06",
+      "mealType": "dinner",
+      "recipeId": "r1",
+      "notes": ""
+    },
+    {
+      "id": "slot_ec76a173f0cc",
+      "householdId": "h1",
+      "date": "2026-04-07",
+      "mealType": "dinner",
+      "recipeId": "r2",
+      "notes": ""
+    },
+    {
+      "id": "slot_3fbd6c8ffcbd",
+      "householdId": "h1",
+      "date": "2026-04-08",
+      "mealType": "dinner",
+      "recipeId": "r3",
+      "notes": ""
+    },
+    {
+      "id": "slot_083b2d56cd9a",
+      "householdId": "h1",
+      "date": "2026-04-09",
+      "mealType": "dinner",
+      "recipeId": "r6",
+      "notes": ""
+    },
+    {
+      "id": "slot_f3532d166bbf",
+      "householdId": "h1",
+      "date": "2026-04-10",
+      "mealType": "dinner",
+      "recipeId": "r5",
+      "notes": ""
+    },
+    {
+      "id": "slot_6a9bab76fe4b",
+      "householdId": "h1",
+      "date": "2026-04-05",
+      "mealType": "breakfast",
+      "recipeId": "r6",
+      "notes": "",
+      "servings": 4
+    },
+    {
+      "id": "slot_81eb178d1ea0",
+      "householdId": "h1",
+      "date": "2026-04-05",
+      "mealType": "breakfast",
+      "recipeId": "r5",
+      "notes": "",
+      "servings": 4
+    },
+    {
+      "id": "slot_aa16f28d63c8",
+      "householdId": "h1",
+      "date": "2026-04-06",
+      "mealType": "lunch",
+      "recipeId": "r3",
+      "notes": "",
+      "servings": 4
+    },
+    {
+      "id": "slot_e49c091123b0",
+      "householdId": "h1",
+      "date": "2026-04-06",
+      "mealType": "breakfast",
+      "recipeId": "r6",
+      "notes": "",
+      "servings": 4
+    },
+    {
+      "id": "slot_899f10002ad7",
+      "householdId": "h1",
+      "date": "2026-04-06",
+      "mealType": "breakfast",
+      "recipeId": "r5",
+      "notes": "",
+      "servings": 4
+    },
+    {
+      "id": "slot_ea2fe500c6ae",
+      "householdId": "h1",
+      "date": "2026-04-05",
+      "mealType": "dinner",
+      "recipeId": "r6",
+      "notes": "",
+      "servings": 4
+    },
+    {
+      "id": "slot_14a25d71cec0",
+      "householdId": "h1",
+      "date": "2026-04-07",
+      "mealType": "breakfast",
+      "recipeId": "r5",
+      "notes": "",
+      "servings": 4
+    }
+  ],
+  "shoppingItems": [
+    {
+      "id": "si1",
+      "householdId": "h1",
+      "name": "Romaine lettuce",
+      "quantity": 2,
+      "unit": "heads",
+      "category": "produce",
+      "checked": false,
+      "sourceRecipeId": "r1",
+      "sourceRecipeName": "Grilled Chicken Caesar Salad",
+      "addedBy": "u1",
+      "addedAt": "2026-04-04T01:34:44.299Z",
+      "syncStatus": "synced"
+    },
+    {
+      "id": "si2",
+      "householdId": "h1",
+      "name": "Greek yogurt",
+      "quantity": 2,
+      "unit": "cups",
+      "category": "dairy",
+      "checked": false,
+      "sourceRecipeId": "r4",
+      "sourceRecipeName": "Overnight Oats with Berries",
+      "addedBy": "u3",
+      "addedAt": "2026-04-04T01:34:44.299Z",
+      "syncStatus": "synced"
+    },
+    {
+      "id": "si3",
+      "householdId": "h1",
+      "name": "Chicken thighs",
+      "quantity": 1.5,
+      "unit": "lbs",
+      "category": "meat",
+      "checked": true,
+      "sourceRecipeId": "r3",
+      "sourceRecipeName": "Thai Green Curry",
+      "addedBy": "u1",
+      "addedAt": "2026-04-04T01:34:44.299Z",
+      "syncStatus": "synced"
+    },
+    {
+      "id": "si4",
+      "householdId": "h1",
+      "name": "Coconut milk",
+      "quantity": 2,
+      "unit": "cans",
+      "category": "pantry",
+      "checked": false,
+      "sourceRecipeId": "r3",
+      "sourceRecipeName": "Thai Green Curry",
+      "addedBy": "u1",
+      "addedAt": "2026-04-05T01:34:44.299Z",
+      "syncStatus": "synced"
+    },
+    {
+      "id": "si5",
+      "householdId": "h1",
+      "name": "Corn tortillas",
+      "quantity": 1,
+      "unit": "pack",
+      "category": "bakery",
+      "checked": false,
+      "sourceRecipeId": "r5",
+      "sourceRecipeName": "Black Bean Tacos",
+      "addedBy": "u2",
+      "addedAt": "2026-04-05T01:34:44.299Z",
+      "syncStatus": "synced"
+    },
+    {
+      "id": "si6",
+      "householdId": "h1",
+      "name": "Paper towels",
+      "quantity": 2,
+      "unit": "rolls",
+      "category": "household",
+      "checked": true,
+      "addedBy": "u2",
+      "addedAt": "2026-04-05T01:34:44.299Z",
+      "syncStatus": "synced"
+    }
+  ],
+  "pantryItems": [
+    {
+      "id": "pantry_1ea873e6b20f",
+      "householdId": "h1",
+      "name": "olive oil",
+      "quantity": 1,
+      "unit": "bottle",
+      "category": "pantry",
+      "lowStockThreshold": 1,
+      "updatedAt": "2026-04-05T01:34:44.299Z"
+    },
+    {
+      "id": "pantry_0d94caf348de",
+      "householdId": "h1",
+      "name": "eggs",
+      "quantity": 4,
+      "unit": "",
+      "category": "dairy",
+      "lowStockThreshold": 6,
+      "updatedAt": "2026-04-05T01:34:44.299Z"
+    },
+    {
+      "id": "pantry_024e4ec0a8f0",
+      "householdId": "h1",
+      "name": "soy sauce",
+      "quantity": 0.5,
+      "unit": "bottle",
+      "category": "pantry",
+      "lowStockThreshold": 1,
+      "updatedAt": "2026-04-04T01:34:44.299Z"
+    }
+  ],
+  "sessions": [
+    {
+      "userId": "u1",
+      "accessToken": "token_8d90163178b54569a006eccbc204c739",
+      "refreshToken": "refresh_2cd89db45fb04b7ab5c5760549692c4f",
+      "expiresAt": "2026-05-06T15:42:43.518Z"
+    },
+    {
+      "userId": "u1",
+      "accessToken": "token_55f7075fb6fe4695b4dd90fa50da0da6",
+      "expiresAt": "2026-05-11T05:33:20.660Z"
+    },
+    {
+      "userId": "u1",
+      "accessToken": "token_c186c9e82f2e43498ddbe623a3a69001",
+      "expiresAt": "2026-05-11T05:49:35.926Z"
+    },
+    {
+      "userId": "u1",
+      "accessToken": "token_fff7791678c540a18fa92b1d9e5ac920",
+      "expiresAt": "2026-05-11T06:02:02.429Z"
+    }
+  ],
+  "meta": {
+    "seededAt": "2026-04-06T01:34:44.300Z",
+    "nutritionCache": {
+      "r4:2026-03-30T01:34:44.299Z:2": {
+        "recipeId": "r4",
+        "recipeTitle": "Overnight Oats with Berries",
+        "servings": 2,
+        "source": "USDA FoodData Central",
+        "estimatedAt": "2026-04-06T01:37:26.236Z",
+        "total": {
+          "calories": 1683.6,
+          "protein": 42.2,
+          "carbs": 282.9,
+          "fat": 30
+        },
+        "perServing": {
+          "calories": 841.8,
+          "protein": 21.1,
+          "carbs": 141.4,
+          "fat": 15
+        },
+        "ingredients": [
+          {
+            "ingredientId": "ing_9ea429dd8f9d",
+            "name": "rolled oats",
+            "quantity": 1,
+            "unit": "cup",
+            "matchedFood": {
+              "fdcId": 2672932,
+              "description": "ROLLED OATS",
+              "dataType": "Branded"
+            },
+            "estimatedWeightGrams": 240,
+            "confidence": "high",
+            "calories": 900,
+            "protein": 30,
+            "carbs": 162,
+            "fat": 3
+          },
+          {
+            "ingredientId": "ing_a1e6875ca930",
+            "name": "milk",
+            "quantity": 1,
+            "unit": "cup",
+            "matchedFood": {
+              "fdcId": 1909132,
+              "description": "MILK",
+              "dataType": "Branded"
+            },
+            "estimatedWeightGrams": 240,
+            "confidence": "high",
+            "calories": 132,
+            "protein": 8.1,
+            "carbs": 12.2,
+            "fat": 3
+          },
+          {
+            "ingredientId": "ing_93c25e77504e",
+            "name": "Greek yogurt",
+            "quantity": 0.5,
+            "unit": "cup",
+            "matchedFood": {
+              "fdcId": 2035482,
+              "description": "GREEK YOGURT",
+              "dataType": "Branded"
+            },
+            "estimatedWeightGrams": 120,
+            "confidence": "high",
+            "calories": 560.4,
+            "protein": 4,
+            "carbs": 84,
+            "fat": 24
+          },
+          {
+            "ingredientId": "ing_16b2c73c8115",
+            "name": "mixed berries",
+            "quantity": 1,
+            "unit": "cup",
+            "matchedFood": {
+              "fdcId": 2291349,
+              "description": "MIXED BERRIES",
+              "dataType": "Branded"
+            },
+            "estimatedWeightGrams": 240,
+            "confidence": "high",
+            "calories": 0,
+            "protein": 0,
+            "carbs": 0,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_80a745595628",
+            "name": "honey",
+            "quantity": 2,
+            "unit": "tbsp",
+            "matchedFood": {
+              "fdcId": 169640,
+              "description": "Honey",
+              "dataType": "SR Legacy"
+            },
+            "estimatedWeightGrams": 30,
+            "confidence": "high",
+            "calories": 91.2,
+            "protein": 0.1,
+            "carbs": 24.7,
+            "fat": 0
+          }
+        ]
+      },
+      "r1:2026-03-25T01:34:44.299Z:4": {
+        "recipeId": "r1",
+        "recipeTitle": "Grilled Chicken Caesar Salad",
+        "servings": 4,
+        "source": "USDA FoodData Central",
+        "estimatedAt": "2026-04-06T01:37:28.862Z",
+        "total": {
+          "calories": 3357.9,
+          "protein": 266.8,
+          "carbs": 203.3,
+          "fat": 88.9
+        },
+        "perServing": {
+          "calories": 839.5,
+          "protein": 66.7,
+          "carbs": 50.8,
+          "fat": 22.2
+        },
+        "ingredients": [
+          {
+            "ingredientId": "ing_743e9ee16052",
+            "name": "chicken breast",
+            "quantity": 2,
+            "unit": "lbs",
+            "matchedFood": {
+              "fdcId": 2187885,
+              "description": "CHICKEN BREAST",
+              "dataType": "Branded"
+            },
+            "estimatedWeightGrams": 907.2,
+            "confidence": "high",
+            "calories": 1496.9,
+            "protein": 185.2,
+            "carbs": 9.6,
+            "fat": 41.5
+          },
+          {
+            "ingredientId": "ing_d8cf61814b85",
+            "name": "romaine lettuce",
+            "quantity": 1,
+            "unit": "head",
+            "matchedFood": {
+              "fdcId": 2709590,
+              "description": "Romaine lettuce, raw",
+              "dataType": "Survey (FNDDS)"
+            },
+            "estimatedWeightGrams": 376,
+            "confidence": "high",
+            "calories": 79,
+            "protein": 3.7,
+            "carbs": 15.3,
+            "fat": 0.6
+          },
+          {
+            "ingredientId": "ing_0dff95e4a135",
+            "name": "parmesan cheese, shaved",
+            "quantity": 0.5,
+            "unit": "cup",
+            "matchedFood": {
+              "fdcId": 2096212,
+              "description": "PARMESAN CHEESE",
+              "dataType": "Branded"
+            },
+            "estimatedWeightGrams": 120,
+            "confidence": "high",
+            "calories": 480,
+            "protein": 48,
+            "carbs": 0,
+            "fat": 24
+          },
+          {
+            "ingredientId": "ing_5d71ed1c1928",
+            "name": "croutons",
+            "quantity": 1,
+            "unit": "cup",
+            "matchedFood": {
+              "fdcId": 172751,
+              "description": "Croutons, plain",
+              "dataType": "SR Legacy"
+            },
+            "estimatedWeightGrams": 240,
+            "confidence": "high",
+            "calories": 976.8,
+            "protein": 28.6,
+            "carbs": 176.4,
+            "fat": 3.1
+          },
+          {
+            "ingredientId": "ing_64f53bcd35de",
+            "name": "Caesar dressing",
+            "quantity": 0.25,
+            "unit": "cup",
+            "matchedFood": {
+              "fdcId": 2710199,
+              "description": "Caesar dressing",
+              "dataType": "Survey (FNDDS)"
+            },
+            "estimatedWeightGrams": 60,
+            "confidence": "high",
+            "calories": 325.2,
+            "protein": 1.3,
+            "carbs": 2,
+            "fat": 19.7
+          }
+        ]
+      },
+      "r2:2026-03-27T01:34:44.299Z:4": {
+        "recipeId": "r2",
+        "recipeTitle": "Creamy Pasta Carbonara",
+        "servings": 4,
+        "source": "USDA FoodData Central",
+        "estimatedAt": "2026-04-06T01:37:31.203Z",
+        "total": {
+          "calories": 4567.6,
+          "protein": 151.1,
+          "carbs": 464.3,
+          "fat": 179.8
+        },
+        "perServing": {
+          "calories": 1141.9,
+          "protein": 37.8,
+          "carbs": 116.1,
+          "fat": 45
+        },
+        "ingredients": [
+          {
+            "ingredientId": "ing_2d7b40dbe7dc",
+            "name": "spaghetti",
+            "quantity": 1,
+            "unit": "lb",
+            "matchedFood": {
+              "fdcId": 2079027,
+              "description": "SPAGHETTI",
+              "dataType": "Branded"
+            },
+            "estimatedWeightGrams": 453.6,
+            "confidence": "high",
+            "calories": 1619.3,
+            "protein": 56.7,
+            "carbs": 332.1,
+            "fat": 4
+          },
+          {
+            "ingredientId": "ing_6394b80b6394",
+            "name": "pancetta",
+            "quantity": 6,
+            "unit": "oz",
+            "matchedFood": {
+              "fdcId": 2525401,
+              "description": "PANCETTA",
+              "dataType": "Branded"
+            },
+            "estimatedWeightGrams": 170.1,
+            "confidence": "high",
+            "calories": 850.5,
+            "protein": 18.2,
+            "carbs": 6.1,
+            "fat": 27.3
+          },
+          {
+            "ingredientId": "ing_f2dc8c8747df",
+            "name": "eggs",
+            "quantity": 4,
+            "unit": "",
+            "matchedFood": {
+              "fdcId": 2498468,
+              "description": "EGGS",
+              "dataType": "Branded"
+            },
+            "estimatedWeightGrams": 200,
+            "confidence": "low",
+            "calories": 1142,
+            "protein": 7.1,
+            "carbs": 114.3,
+            "fat": 71.4
+          },
+          {
+            "ingredientId": "ing_7ab4fc1848de",
+            "name": "pecorino romano, grated",
+            "quantity": 1,
+            "unit": "cup",
+            "matchedFood": {
+              "fdcId": 362372,
+              "description": "PECORINO ROMANO",
+              "dataType": "Branded"
+            },
+            "estimatedWeightGrams": 240,
+            "confidence": "high",
+            "calories": 943.2,
+            "protein": 68.6,
+            "carbs": 8.6,
+            "fat": 77.1
+          },
+          {
+            "ingredientId": "ing_8d474d536ff5",
+            "name": "black pepper",
+            "quantity": 1,
+            "unit": "tsp",
+            "matchedFood": {
+              "fdcId": 170931,
+              "description": "Spices, pepper, black",
+              "dataType": "SR Legacy"
+            },
+            "estimatedWeightGrams": 5,
+            "confidence": "high",
+            "calories": 12.6,
+            "protein": 0.5,
+            "carbs": 3.2,
+            "fat": 0
+          }
+        ]
+      },
+      "r3:2026-03-29T01:34:44.299Z:4": {
+        "recipeId": "r3",
+        "recipeTitle": "Thai Green Curry",
+        "servings": 4,
+        "source": "USDA FoodData Central",
+        "estimatedAt": "2026-04-06T01:37:30.458Z",
+        "total": {
+          "calories": 2045.1,
+          "protein": 139.9,
+          "carbs": 53.5,
+          "fat": 121.8
+        },
+        "perServing": {
+          "calories": 511.3,
+          "protein": 35,
+          "carbs": 13.4,
+          "fat": 30.4
+        },
+        "ingredients": [
+          {
+            "ingredientId": "ing_4c14d84b0e70",
+            "name": "chicken thighs",
+            "quantity": 1.5,
+            "unit": "lbs",
+            "matchedFood": {
+              "fdcId": 2100593,
+              "description": "CHICKEN THIGHS",
+              "dataType": "Branded"
+            },
+            "estimatedWeightGrams": 680.4,
+            "confidence": "high",
+            "calories": 1639.7,
+            "protein": 109.3,
+            "carbs": 0,
+            "fat": 109.3
+          },
+          {
+            "ingredientId": "ing_d0e958902271",
+            "name": "green curry paste",
+            "quantity": 3,
+            "unit": "tbsp",
+            "matchedFood": {
+              "fdcId": 1883660,
+              "description": "GREEN CURRY PASTE",
+              "dataType": "Branded"
+            },
+            "estimatedWeightGrams": 45,
+            "confidence": "high",
+            "calories": 63,
+            "protein": 1,
+            "carbs": 9.4,
+            "fat": 0.5
+          },
+          {
+            "ingredientId": "ing_7ba39b50974f",
+            "name": "coconut milk",
+            "quantity": 1,
+            "unit": "can",
+            "matchedFood": {
+              "fdcId": 2705413,
+              "description": "Coconut milk",
+              "dataType": "Survey (FNDDS)"
+            },
+            "estimatedWeightGrams": 400,
+            "confidence": "medium",
+            "calories": 124,
+            "protein": 0.8,
+            "carbs": 11.7,
+            "fat": 8.3
+          },
+          {
+            "ingredientId": "ing_e35db0ca7850",
+            "name": "bamboo shoots",
+            "quantity": 1,
+            "unit": "cup",
+            "matchedFood": {
+              "fdcId": 169210,
+              "description": "Bamboo shoots, raw",
+              "dataType": "SR Legacy"
+            },
+            "estimatedWeightGrams": 240,
+            "confidence": "high",
+            "calories": 64.8,
+            "protein": 6.2,
+            "carbs": 12.5,
+            "fat": 0.3
+          },
+          {
+            "ingredientId": "ing_4da8509ba516",
+            "name": "Thai basil leaves",
+            "quantity": 1,
+            "unit": "cup",
+            "matchedFood": {
+              "fdcId": 168416,
+              "description": "Drumstick leaves, raw",
+              "dataType": "SR Legacy"
+            },
+            "estimatedWeightGrams": 240,
+            "confidence": "high",
+            "calories": 153.6,
+            "protein": 22.6,
+            "carbs": 19.9,
+            "fat": 3.4
+          }
+        ]
+      },
+      "r6:2026-04-02T01:34:44.299Z:4": {
+        "recipeId": "r6",
+        "recipeTitle": "Honey Garlic Salmon",
+        "servings": 4,
+        "source": "USDA FoodData Central",
+        "estimatedAt": "2026-04-06T01:37:32.389Z",
+        "total": {
+          "calories": 1740,
+          "protein": 151.8,
+          "carbs": 65.7,
+          "fat": 24.5
+        },
+        "perServing": {
+          "calories": 435,
+          "protein": 38,
+          "carbs": 16.4,
+          "fat": 6.1
+        },
+        "ingredients": [
+          {
+            "ingredientId": "ing_a8a3688ef4e5",
+            "name": "salmon fillets",
+            "quantity": 4,
+            "unit": "",
+            "matchedFood": {
+              "fdcId": 1907738,
+              "description": "SALMON FILLETS",
+              "dataType": "Branded"
+            },
+            "estimatedWeightGrams": 680,
+            "confidence": "low",
+            "calories": 1326,
+            "protein": 138.4,
+            "carbs": 0,
+            "fat": 24.1
+          },
+          {
+            "ingredientId": "ing_a1ef5d212690",
+            "name": "honey",
+            "quantity": 3,
+            "unit": "tbsp",
+            "matchedFood": {
+              "fdcId": 169640,
+              "description": "Honey",
+              "dataType": "SR Legacy"
+            },
+            "estimatedWeightGrams": 45,
+            "confidence": "high",
+            "calories": 136.8,
+            "protein": 0.1,
+            "carbs": 37.1,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_820202d8e73a",
+            "name": "garlic",
+            "quantity": 3,
+            "unit": "cloves",
+            "matchedFood": {
+              "fdcId": 2710169,
+              "description": "Garlic sauce",
+              "dataType": "Survey (FNDDS)"
+            },
+            "estimatedWeightGrams": 15,
+            "confidence": "medium",
+            "calories": 102.5,
+            "protein": 0.2,
+            "carbs": 0.4,
+            "fat": 0.3
+          },
+          {
+            "ingredientId": "ing_cd2c96eff609",
+            "name": "soy sauce",
+            "quantity": 2,
+            "unit": "tbsp",
+            "matchedFood": {
+              "fdcId": 2707442,
+              "description": "Soy sauce",
+              "dataType": "Survey (FNDDS)"
+            },
+            "estimatedWeightGrams": 30,
+            "confidence": "high",
+            "calories": 15.9,
+            "protein": 2.4,
+            "carbs": 1.5,
+            "fat": 0.1
+          },
+          {
+            "ingredientId": "ing_c7d0a9129b95",
+            "name": "broccoli florets",
+            "quantity": 1,
+            "unit": "lb",
+            "matchedFood": {
+              "fdcId": 2592748,
+              "description": "BROCCOLI FLORETS",
+              "dataType": "Branded"
+            },
+            "estimatedWeightGrams": 453.6,
+            "confidence": "high",
+            "calories": 158.8,
+            "protein": 10.7,
+            "carbs": 26.7,
+            "fat": 0
+          }
+        ]
+      },
+      "r5:2026-03-31T01:34:44.299Z:4": {
+        "recipeId": "r5",
+        "recipeTitle": "Black Bean Tacos",
+        "servings": 4,
+        "source": "USDA FoodData Central",
+        "estimatedAt": "2026-04-06T01:37:33.707Z",
+        "total": {
+          "calories": 1368.6,
+          "protein": 56,
+          "carbs": 253.2,
+          "fat": 3.7
+        },
+        "perServing": {
+          "calories": 342.1,
+          "protein": 14,
+          "carbs": 63.3,
+          "fat": 0.9
+        },
+        "ingredients": [
+          {
+            "ingredientId": "ing_2ce446c7135c",
+            "name": "black beans",
+            "quantity": 2,
+            "unit": "cans",
+            "matchedFood": {
+              "fdcId": 2075490,
+              "description": "BLACK BEANS",
+              "dataType": "Branded"
+            },
+            "estimatedWeightGrams": 800,
+            "confidence": "medium",
+            "calories": 680,
+            "protein": 43,
+            "carbs": 123,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_56476386e2b2",
+            "name": "corn tortillas",
+            "quantity": 8,
+            "unit": "",
+            "matchedFood": {
+              "fdcId": 2075746,
+              "description": "CORN TORTILLAS",
+              "dataType": "Branded"
+            },
+            "estimatedWeightGrams": 240,
+            "confidence": "low",
+            "calories": 511.2,
+            "protein": 10.2,
+            "carbs": 102.1,
+            "fat": 2.5
+          },
+          {
+            "ingredientId": "ing_67a3c77b8a5a",
+            "name": "avocados",
+            "quantity": 2,
+            "unit": "",
+            "matchedFood": {
+              "fdcId": 173573,
+              "description": "Oil, avocado",
+              "dataType": "SR Legacy"
+            },
+            "estimatedWeightGrams": 9,
+            "confidence": "medium",
+            "calories": 79.6,
+            "protein": 0,
+            "carbs": 0,
+            "fat": 1.2
+          },
+          {
+            "ingredientId": "ing_9d6dee90062d",
+            "name": "pico de gallo",
+            "quantity": 1,
+            "unit": "cup",
+            "matchedFood": {
+              "fdcId": 2067381,
+              "description": "PICO DE GALLO",
+              "dataType": "Branded"
+            },
+            "estimatedWeightGrams": 240,
+            "confidence": "high",
+            "calories": 57.6,
+            "protein": 2.8,
+            "carbs": 14.1,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_0aefad252e8d",
+            "name": "limes",
+            "quantity": 2,
+            "unit": "",
+            "matchedFood": {
+              "fdcId": 2453885,
+              "description": "LIMES",
+              "dataType": "Branded"
+            },
+            "estimatedWeightGrams": 134,
+            "confidence": "low",
+            "calories": 40.2,
+            "protein": 0,
+            "carbs": 14,
+            "fat": 0
+          }
+        ]
+      },
+      "recipe_9b648c2d2013:2026-04-11T05:54:03.344Z:6": {
+        "recipeId": "recipe_9b648c2d2013",
+        "recipeTitle": "Vietnamese Pho recipe",
+        "servings": 6,
+        "source": "USDA FoodData Central",
+        "estimatedAt": "2026-04-11T05:54:19.655Z",
+        "total": {
+          "calories": 1141.3,
+          "protein": 39.5,
+          "carbs": 226.1,
+          "fat": 7.6
+        },
+        "perServing": {
+          "calories": 190.2,
+          "protein": 6.6,
+          "carbs": 37.7,
+          "fat": 1.3
+        },
+        "ingredients": [
+          {
+            "ingredientId": "ing_325f789b9be5",
+            "name": "large onions (, halved)",
+            "quantity": 2,
+            "unit": "",
+            "matchedFood": {
+              "fdcId": 170000,
+              "description": "Onions, raw",
+              "dataType": "SR Legacy"
+            },
+            "estimatedWeightGrams": 320,
+            "confidence": "medium",
+            "calories": 128,
+            "protein": 3.5,
+            "carbs": 29.9,
+            "fat": 0.1
+          },
+          {
+            "ingredientId": "ing_87ba691f598c",
+            "name": "150g / 5oz ginger (, sliced down the centre)",
+            "quantity": 1,
+            "unit": "",
+            "matchedFood": null,
+            "estimatedWeightGrams": 0,
+            "confidence": "low",
+            "calories": 0,
+            "protein": 0,
+            "carbs": 0,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_5a969753a5f0",
+            "name": "star anise",
+            "quantity": 10,
+            "unit": "",
+            "matchedFood": {
+              "fdcId": 171316,
+              "description": "Spices, anise seed",
+              "dataType": "SR Legacy"
+            },
+            "estimatedWeightGrams": 67,
+            "confidence": "medium",
+            "calories": 225.8,
+            "protein": 11.8,
+            "carbs": 33.5,
+            "fat": 2.1
+          },
+          {
+            "ingredientId": "ing_a2371fa1c840",
+            "name": "cinnamon quills",
+            "quantity": 4,
+            "unit": "",
+            "matchedFood": {
+              "fdcId": 171849,
+              "description": "Bread, cinnamon",
+              "dataType": "SR Legacy"
+            },
+            "estimatedWeightGrams": 112,
+            "confidence": "medium",
+            "calories": 283.4,
+            "protein": 7.9,
+            "carbs": 49.7,
+            "fat": 4
+          },
+          {
+            "ingredientId": "ing_36b47cf88eff",
+            "name": "cardamon pods",
+            "quantity": 4,
+            "unit": "",
+            "matchedFood": {
+              "fdcId": 170483,
+              "description": "Drumstick pods, raw",
+              "dataType": "SR Legacy"
+            },
+            "estimatedWeightGrams": 400,
+            "confidence": "medium",
+            "calories": 148,
+            "protein": 8.4,
+            "carbs": 34.1,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_2a0f433d9c0f",
+            "name": "((the spice cloves!))",
+            "quantity": 3,
+            "unit": "cloves",
+            "matchedFood": null,
+            "estimatedWeightGrams": 0,
+            "confidence": "low",
+            "calories": 0,
+            "protein": 0,
+            "carbs": 0,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_c13e12f993c6",
+            "name": "coriander seeds",
+            "quantity": 1.5,
+            "unit": "tbsp",
+            "matchedFood": {
+              "fdcId": 170922,
+              "description": "Spices, coriander seed",
+              "dataType": "SR Legacy"
+            },
+            "estimatedWeightGrams": 22.5,
+            "confidence": "high",
+            "calories": 67,
+            "protein": 2.8,
+            "carbs": 12.4,
+            "fat": 0.4
+          },
+          {
+            "ingredientId": "ing_c954bdf991c5",
+            "name": "1.5kg / 3lb beef brisket",
+            "quantity": 1,
+            "unit": "",
+            "matchedFood": null,
+            "estimatedWeightGrams": 0,
+            "confidence": "low",
+            "calories": 0,
+            "protein": 0,
+            "carbs": 0,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_75920631a1e6",
+            "name": "1kg / 2lb meaty beef bones",
+            "quantity": 1,
+            "unit": "",
+            "matchedFood": null,
+            "estimatedWeightGrams": 0,
+            "confidence": "low",
+            "calories": 0,
+            "protein": 0,
+            "carbs": 0,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_e5e00e16623f",
+            "name": "1kg / 2lb marrow bones ((leg, knuckle), cut to reveal marrow)",
+            "quantity": 1,
+            "unit": "",
+            "matchedFood": null,
+            "estimatedWeightGrams": 0,
+            "confidence": "low",
+            "calories": 0,
+            "protein": 0,
+            "carbs": 0,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_484e7f7ac536",
+            "name": "litres / 3.75 quarts water ((15 cups))",
+            "quantity": 3.5,
+            "unit": "",
+            "matchedFood": null,
+            "estimatedWeightGrams": 0,
+            "confidence": "low",
+            "calories": 0,
+            "protein": 0,
+            "carbs": 0,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_7af58ec62567",
+            "name": "white sugar",
+            "quantity": 2,
+            "unit": "tbsp",
+            "matchedFood": {
+              "fdcId": 2710258,
+              "description": "Sugar, white, granulated or lump",
+              "dataType": "Survey (FNDDS)"
+            },
+            "estimatedWeightGrams": 30,
+            "confidence": "high",
+            "calories": 120.3,
+            "protein": 0,
+            "carbs": 29.9,
+            "fat": 0.1
+          },
+          {
+            "ingredientId": "ing_e797189a95ca",
+            "name": "salt",
+            "quantity": 1,
+            "unit": "tbsp",
+            "matchedFood": {
+              "fdcId": 2059475,
+              "description": "SALT",
+              "dataType": "Branded"
+            },
+            "estimatedWeightGrams": 15,
+            "confidence": "high",
+            "calories": 0,
+            "protein": 0,
+            "carbs": 0,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_c8114517cc3c",
+            "name": "/ 3 tbsp fish sauce ((Note 2))",
+            "quantity": 40,
+            "unit": "ml",
+            "matchedFood": null,
+            "estimatedWeightGrams": 0,
+            "confidence": "low",
+            "calories": 0,
+            "protein": 0,
+            "carbs": 0,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_2360ad403051",
+            "name": "50g / 1.5 oz dried rice sticks ((or 120g/4oz fresh) (Note 3))",
+            "quantity": 1,
+            "unit": "",
+            "matchedFood": null,
+            "estimatedWeightGrams": 0,
+            "confidence": "low",
+            "calories": 0,
+            "protein": 0,
+            "carbs": 0,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_51462723c65c",
+            "name": "30g / 1 oz beef tenderloin, raw, very thinly sliced ((Note 4))",
+            "quantity": 1,
+            "unit": "",
+            "matchedFood": null,
+            "estimatedWeightGrams": 0,
+            "confidence": "low",
+            "calories": 0,
+            "protein": 0,
+            "carbs": 0,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_eb5ff29fde2b",
+            "name": "- 5 brisket slices ((used for broth))",
+            "quantity": 3,
+            "unit": "",
+            "matchedFood": null,
+            "estimatedWeightGrams": 0,
+            "confidence": "low",
+            "calories": 0,
+            "protein": 0,
+            "carbs": 0,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_11f3247b70bf",
+            "name": "Beansprouts, handful",
+            "quantity": 1,
+            "unit": "",
+            "matchedFood": null,
+            "estimatedWeightGrams": 0,
+            "confidence": "low",
+            "calories": 0,
+            "protein": 0,
+            "carbs": 0,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_41e6d02b34ec",
+            "name": "Thai basil, 3 - 5 sprigs",
+            "quantity": 1,
+            "unit": "",
+            "matchedFood": {
+              "fdcId": 2709744,
+              "description": "Hot Thai sauce",
+              "dataType": "Survey (FNDDS)"
+            },
+            "estimatedWeightGrams": 5,
+            "confidence": "medium",
+            "calories": 3.7,
+            "protein": 0.1,
+            "carbs": 0.8,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_b9c5a072b7cf",
+            "name": "Coriander/cilantro, 3 - 5 sprigs ((or more basil))",
+            "quantity": 1,
+            "unit": "",
+            "matchedFood": null,
+            "estimatedWeightGrams": 0,
+            "confidence": "low",
+            "calories": 0,
+            "protein": 0,
+            "carbs": 0,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_578493b319ec",
+            "name": "Lime wedges*",
+            "quantity": 1,
+            "unit": "",
+            "matchedFood": {
+              "fdcId": 168155,
+              "description": "Limes, raw",
+              "dataType": "SR Legacy"
+            },
+            "estimatedWeightGrams": 67,
+            "confidence": "medium",
+            "calories": 20.1,
+            "protein": 0.5,
+            "carbs": 7.1,
+            "fat": 0
+          },
+          {
+            "ingredientId": "ing_6df3b17440f9",
+            "name": "Finely sliced red chilli*",
+            "quantity": 1,
+            "unit": "",
+            "matchedFood": {
+              "fdcId": 2003589,
+              "description": "Flour, semolina, fine",
+              "dataType": "Foundation"
+            },
+            "estimatedWeightGrams": 30,
+            "confidence": "medium",
+            "calories": 109.8,
+            "protein": 4,
+            "carbs": 21.6,
+            "fat": 0.6
+          },
+          {
+            "ingredientId": "ing_41e81a2133c4",
+            "name": "Hoisin sauce*",
+            "quantity": 1,
+            "unit": "",
+            "matchedFood": {
+              "fdcId": 172886,
+              "description": "Sauce, hoisin, ready-to-serve",
+              "dataType": "SR Legacy"
+            },
+            "estimatedWeightGrams": 16,
+            "confidence": "medium",
+            "calories": 35.2,
+            "protein": 0.5,
+            "carbs": 7.1,
+            "fat": 0.3
+          },
+          {
+            "ingredientId": "ing_4af2695ccf39",
+            "name": "Sriracha* ((for spiciness))",
+            "quantity": 1,
+            "unit": "",
+            "matchedFood": null,
+            "estimatedWeightGrams": 0,
+            "confidence": "low",
+            "calories": 0,
+            "protein": 0,
+            "carbs": 0,
+            "fat": 0
+          }
+        ]
+      }
+    },
+    "aiSummaryCache": {},
+    "aiAskCache": {
+      "r6:2026-04-02T01:34:44.299Z:4:is this high enough in protein?:2100-130-250-70:qwen/qwen3.6-plus:free": {
+        "headline": "High-Protein Dinner Fit",
+        "verdict": "good-fit",
+        "answer": "With 38g of protein per serving, this salmon dish covers nearly a third of your daily 130g target. It works perfectly as a post-workout recovery meal or a filling weeknight dinner.",
+        "bestTimes": [
+          "post-workout dinner",
+          "weeknight dinner",
+          "meal prep lunch"
+        ],
+        "watchouts": [
+          "The honey glaze adds sugar, so track carbs if you are strictly cutting",
+          "Pair with a complex carb if you need extra fuel for heavy training days",
+          "Ensure your other daily meals balance out the remaining 92g of protein"
+        ],
+        "model": "qwen/qwen3.6-plus-04-02:free",
+        "generatedAt": "2026-04-06T07:50:59.985Z",
+        "question": "is this high enough in protein?"
+      }
+    }
+  },
+  "recipeReviews": []
+}
