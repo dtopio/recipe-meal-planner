@@ -125,7 +125,9 @@ async function handleChangeServings(slot: MealSlot, delta: number) {
   try {
     await planner.updateMealServings(slot.id, next)
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : 'Failed to update servings')
+    const message = error instanceof Object && 'message' in error ? (error as any).message : (error instanceof Error ? error.message : 'Failed to update servings')
+    console.error('Servings update error:', error)
+    toast.error(message)
   }
 }
 
@@ -234,13 +236,13 @@ async function handleGenerateShoppingList() {
     <div class="flex gap-6">
       <div class="flex-1 min-w-0">
         <div class="hidden lg:block">
-          <div class="surface-card overflow-hidden">
-            <div class="grid grid-cols-[100px_repeat(7,minmax(0,1fr))] border-b border-border/40">
+          <div class="surface-card overflow-x-auto">
+            <div class="grid grid-cols-[100px_repeat(7,300px)] border-b border-border/40 sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
               <div class="p-3" />
               <div
                 v-for="date in planner.weekDates"
                 :key="'h-' + date"
-                class="min-w-0 p-3 text-center transition-colors relative"
+                class="p-3 text-center transition-colors relative"
                 :class="isToday(date) ? 'bg-primary/[0.05]' : ''"
               >
                 <p class="text-[11px] font-bold uppercase tracking-wider" :class="isToday(date) ? 'text-primary' : 'text-muted-foreground'">
@@ -256,7 +258,7 @@ async function handleGenerateShoppingList() {
             <div
               v-for="(mealType, mealIndex) in mealTypes"
               :key="mealType"
-              class="grid grid-cols-[100px_repeat(7,minmax(0,1fr))]"
+              class="grid grid-cols-[100px_repeat(7,300px)]"
               :class="mealIndex < mealTypes.length - 1 ? 'border-b border-border/30' : ''"
             >
               <div class="p-3 flex flex-col items-center justify-center gap-1.5 border-r border-border/30 bg-muted/20">
@@ -267,33 +269,38 @@ async function handleGenerateShoppingList() {
               <div
                 v-for="date in planner.weekDates"
                 :key="date + '-' + mealType"
-                class="min-w-0 p-2 min-h-[120px] transition-colors border-r border-border/20 last:border-r-0"
+                class="h-40 p-2 transition-colors border-r border-border/20 last:border-r-0 overflow-y-auto"
                 :class="isToday(date) ? 'bg-primary/[0.03]' : ''"
                 @dragover="onDragOver"
                 @drop="onDrop(date, mealType, $event)"
               >
                 <div
-                  class="h-full min-w-0 rounded-xl transition-all p-1.5"
+                  class="rounded-xl transition-all p-1.5 space-y-1.5"
                   :class="draggedRecipe ? 'ring-2 ring-dashed ring-primary/20 bg-primary/[0.02]' : ''"
                 >
-                  <div v-if="getMealSlots(date, mealType).length" class="space-y-1.5">
-                    <MealSlotCard
-                      v-for="slot in getMealSlots(date, mealType)"
-                      :key="slot.id"
-                      :slot="slot"
-                      :meal-type="mealType"
-                      :servings-saving="Boolean(planner.updatingSlotIds[slot.id])"
-                      @remove="handleRemoveMeal(slot.id)"
-                      @click="openRecipe(slot)"
-                      @decrease-servings="handleChangeServings(slot, -1)"
-                      @increase-servings="handleChangeServings(slot, 1)"
-                      @toggle-recurring="handleToggleRecurring(slot)"
-                    />
-                  </div>
+                  <MealSlotCard
+                    v-for="slot in getMealSlots(date, mealType)"
+                    :key="slot.id"
+                    :slot="slot"
+                    :meal-type="mealType"
+                    :servings-saving="Boolean(planner.updatingSlotIds[slot.id])"
+                    @remove="handleRemoveMeal(slot.id)"
+                    @click="openRecipe(slot)"
+                    @decrease-servings="handleChangeServings(slot, -1)"
+                    @increase-servings="handleChangeServings(slot, 1)"
+                    @toggle-recurring="handleToggleRecurring(slot)"
+                  />
 
                   <button
+                    v-if="!getMealSlots(date, mealType).length"
                     class="flex min-h-[40px] w-full items-center justify-center rounded-lg border border-dashed border-border/40 px-2 py-2 text-[11px] font-semibold text-muted-foreground/40 transition-all hover:border-primary/30 hover:bg-primary/[0.04] hover:text-primary"
-                    :class="getMealSlots(date, mealType).length ? 'mt-1.5' : 'h-full'"
+                    @click="openAssignPanel(date, mealType)"
+                  >
+                    + Add
+                  </button>
+                  <button
+                    v-else
+                    class="flex min-h-[32px] w-full items-center justify-center rounded-lg border border-dashed border-border/40 px-2 py-1.5 text-[10px] font-semibold text-muted-foreground/40 transition-all hover:border-primary/30 hover:bg-primary/[0.04] hover:text-primary mt-1"
                     @click="openAssignPanel(date, mealType)"
                   >
                     + Add
