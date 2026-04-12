@@ -53,7 +53,11 @@ app.use(express.json({ limit: '1mb' }))
 // ── HTTPS redirect in production ───────────────────────────────
 if (isProduction) {
   app.use((req, res, next) => {
-    if (req.get('x-forwarded-proto') !== 'https') {
+    const host = req.get('host') || ''
+    const isLocalPreview = /^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(host)
+    const forwardedProto = req.get('x-forwarded-proto')
+
+    if (!isLocalPreview && forwardedProto && forwardedProto !== 'https') {
       return res.redirect(301, `https://${req.get('host')}${req.originalUrl}`)
     }
     next()

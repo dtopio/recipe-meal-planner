@@ -87,12 +87,14 @@ const pageTitle = computed(() => {
             <p class="text-sm text-muted-foreground mb-8 leading-relaxed">{{ ui.confirmDialog.description }}</p>
             <div class="flex items-center justify-end gap-3">
               <button
+                type="button"
                 @click="ui.closeConfirm()"
                 class="px-5 min-h-[44px] rounded-xl text-sm font-semibold hover:bg-muted transition-colors"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 @click="ui.executeConfirm()"
                 class="px-5 min-h-[44px] rounded-xl text-sm font-semibold text-white transition-colors shadow-lg"
                 :class="ui.confirmDialog.variant === 'destructive' ? 'bg-destructive hover:bg-destructive/90 shadow-destructive/20' : 'bg-primary hover:bg-primary/90 shadow-primary/20'"

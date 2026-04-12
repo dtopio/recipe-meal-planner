@@ -8,6 +8,8 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('session_token'))
   const loading = ref(false)
   const error = ref<string | null>(null)
+  const initialized = ref(false)
+  let initializePromise: Promise<void> | null = null
 
   const isAuthenticated = computed(() => !!token.value)
   const displayName = computed(() => user.value?.displayName || 'User')
@@ -83,7 +85,10 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function loadUser() {
-    if (!token.value) return
+    if (!token.value) {
+      initialized.value = true
+      return
+    }
     loading.value = true
     try {
       const { data } = await apiClient<User>('/auth/me')
@@ -93,7 +98,24 @@ export const useAuthStore = defineStore('auth', () => {
       logout()
     } finally {
       loading.value = false
+      initialized.value = true
     }
+  }
+
+  async function initialize() {
+    if (initializePromise) return initializePromise
+
+    initializePromise = (async () => {
+      if (token.value) {
+        await loadUser()
+      } else {
+        initialized.value = true
+      }
+    })().finally(() => {
+      initializePromise = null
+    })
+
+    return initializePromise
   }
 
   async function updateProfile(displayName: string) {
@@ -182,9 +204,11 @@ export const useAuthStore = defineStore('auth', () => {
     token,
     loading,
     error,
+    initialized,
     isAuthenticated,
     displayName,
     initials,
+    initialize,
     login,
     register,
     loadUser,

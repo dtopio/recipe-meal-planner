@@ -31,6 +31,7 @@ defineEmits<{
     <div class="flex items-center gap-3 flex-wrap justify-center">
       <slot name="action">
         <button
+          type="button"
           v-if="actionLabel"
           @click="$emit('action')"
           class="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-all duration-200 shadow-md shadow-primary/15 press-scale"
@@ -39,6 +40,7 @@ defineEmits<{
         </button>
       </slot>
       <button
+        type="button"
         v-if="secondaryActionLabel"
         @click="$emit('secondaryAction')"
         class="inline-flex items-center gap-2 rounded-xl border border-border px-5 py-2.5 text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all duration-200 press-scale"

@@ -31,6 +31,7 @@ function isActive(path: string) {
   >
     <div class="flex items-center h-[68px] px-2">
       <button
+        type="button"
         v-for="item in navItems"
         :key="item.path"
         @click="router.push(item.path)"

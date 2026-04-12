@@ -66,6 +66,7 @@ function navigate(path: string) {
     <!-- Nav links -->
     <div class="flex-1 overflow-y-auto py-2 px-4 space-y-1.5">
       <button
+        type="button"
         v-for="item in navItems"
         :key="item.path"
         @click="navigate(item.path)"
