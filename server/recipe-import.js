@@ -93,6 +93,16 @@ function extractImageUrl(image) {
   return undefined
 }
 
+function toAbsoluteUrl(value, baseUrl) {
+  if (!value) return undefined
+
+  try {
+    return new URL(value, baseUrl).href
+  } catch {
+    return undefined
+  }
+}
+
 function extractInstructionSteps(instructions) {
   if (!instructions) return []
 
@@ -243,7 +253,7 @@ export async function importRecipeFromUrl(url) {
   return {
     title: String(recipeNode.name).trim(),
     description: typeof recipeNode.description === 'string' ? recipeNode.description.trim() : undefined,
-    imageUrl: extractImageUrl(recipeNode.image),
+    imageUrl: toAbsoluteUrl(extractImageUrl(recipeNode.image), safeUrl),
     prepTime: prepTime || Math.max(0, totalTime - cookTime),
     cookTime: cookTime || totalTime || 20,
     servings: parseServings(recipeNode.recipeYield),

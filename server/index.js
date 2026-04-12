@@ -25,6 +25,7 @@ const rootDirectory = path.resolve(__dirname, '..')
 const distDirectory = path.join(rootDirectory, 'dist')
 
 const isProduction = process.argv.includes('--production') || process.env.NODE_ENV === 'production'
+const defaultCspDirectives = helmet.contentSecurityPolicy.getDefaultDirectives()
 
 const app = express()
 
@@ -35,7 +36,12 @@ if (isProduction) {
 
 // ── Security headers ───────────────────────────────────────────
 app.use(helmet({
-  contentSecurityPolicy: isProduction ? undefined : false,
+  contentSecurityPolicy: isProduction ? {
+    directives: {
+      ...defaultCspDirectives,
+      'img-src': ["'self'", 'data:', 'https:'],
+    },
+  } : false,
   crossOriginEmbedderPolicy: false,
   hsts: isProduction ? { maxAge: 63072000, includeSubDomains: true } : false,
 }))
