@@ -21,6 +21,7 @@ const colorClasses = {
 
 <template>
   <button
+    type="button"
     @click="$emit('click')"
     class="flex items-center gap-3 rounded-xl p-3.5 transition-all duration-200 text-left w-full border press-scale"
     :class="colorClasses[color || 'primary']"

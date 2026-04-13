@@ -38,7 +38,6 @@ function loadEnvFile(filePath) {
 }
 
 export const config = {
-  databaseUrl: process.env.DATABASE_URL || '',
   appUrl: process.env.APP_URL || 'http://localhost:3000',
   usdaApiKey: process.env.USDA_API_KEY || '',
   openrouterApiKey: process.env.OPENROUTER_API_KEY || '',

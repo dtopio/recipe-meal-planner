@@ -37,6 +37,7 @@ function handleLogout() {
     <div class="flex items-center h-16 px-5 lg:px-8 gap-4">
       <!-- Mobile hamburger -->
       <button
+        type="button"
         @click="ui.toggleSidebar()"
         class="lg:hidden flex items-center justify-center w-11 h-11 -ml-2 rounded-xl hover:bg-muted transition-colors"
         aria-label="Toggle navigation"
@@ -70,6 +71,7 @@ function handleLogout() {
 
         <!-- Theme toggle -->
         <button
+          type="button"
           @click="ui.setTheme(ui.themeMode === 'dark' ? 'light' : ui.themeMode === 'light' ? 'system' : 'dark')"
           class="flex items-center justify-center w-11 h-11 rounded-xl hover:bg-muted transition-colors"
           :aria-label="`Theme: ${ui.themeMode}`"
@@ -82,6 +84,7 @@ function handleLogout() {
 
         <!-- Notifications -->
         <button
+          type="button"
           class="flex items-center justify-center w-11 h-11 rounded-xl hover:bg-muted transition-colors relative"
           aria-label="Notifications"
         >
@@ -92,6 +95,7 @@ function handleLogout() {
         <!-- User menu -->
         <div class="relative">
           <button
+            type="button"
             @click="toggleUserMenu"
             class="flex items-center justify-center w-11 h-11 rounded-xl hover:bg-muted transition-colors"
             aria-label="User menu"
@@ -120,12 +124,14 @@ function handleLogout() {
               </div>
               <div class="py-1.5">
                 <button
+                  type="button"
                   @click="userMenuOpen = false; router.push('/settings')"
                   class="w-full flex items-center gap-3 px-5 py-3 text-sm font-medium hover:bg-muted transition-colors min-h-[44px]"
                 >
                   <Settings class="w-4.5 h-4.5 text-muted-foreground" /> Settings
                 </button>
                 <button
+                  type="button"
                   @click="userMenuOpen = false; router.push('/household')"
                   class="w-full flex items-center gap-3 px-5 py-3 text-sm font-medium hover:bg-muted transition-colors min-h-[44px]"
                 >
@@ -134,6 +140,7 @@ function handleLogout() {
               </div>
               <div class="border-t border-border/50 pt-1.5">
                 <button
+                  type="button"
                   @click="handleLogout"
                   class="w-full flex items-center gap-3 px-5 py-3 text-sm font-medium text-destructive hover:bg-destructive/[0.06] transition-colors min-h-[44px]"
                 >

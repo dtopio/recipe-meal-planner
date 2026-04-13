@@ -32,7 +32,8 @@ export const useHouseholdStore = defineStore('household', () => {
   const hasHousehold = computed(() => !!household.value)
   const memberCount = computed(() => members.value.length)
   const isAdmin = computed(() => {
-    const userId = localStorage.getItem('user_id') || 'u1'
+    const userId = auth.user?.id || localStorage.getItem('user_id')
+    if (!userId) return false
     return members.value.find(m => m.userId === userId)?.role === 'admin'
   })
 
@@ -172,12 +173,16 @@ export const useHouseholdStore = defineStore('household', () => {
 
   async function regenerateInvite() {
     loading.value = true
+    error.value = null
     try {
       const { data } = await apiClient<InviteToken>('/household/invite/regenerate', {
         method: 'POST',
       })
       invite.value = data
-      error.value = null
+      return data
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to regenerate invite code')
+      throw new Error(error.value)
     } finally {
       loading.value = false
     }
@@ -185,12 +190,15 @@ export const useHouseholdStore = defineStore('household', () => {
 
   async function leaveHousehold() {
     loading.value = true
+    error.value = null
     try {
       await apiClient<boolean>('/household/leave', {
         method: 'POST',
       })
       applyBundle({ household: null, members: [], invite: null, preferences: null })
-      error.value = null
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to leave household')
+      throw new Error(error.value)
     } finally {
       loading.value = false
     }

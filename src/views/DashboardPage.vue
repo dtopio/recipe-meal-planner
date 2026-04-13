@@ -245,7 +245,7 @@ function getProteinTone(current: number, target: number) {
               </div>
               Shopping
             </h3>
-            <button @click="router.push('/shopping-list')" class="text-xs text-primary font-semibold hover:text-primary/80 inline-flex items-center gap-0.5 transition-colors">
+            <button type="button" @click="router.push('/shopping-list')" class="text-xs text-primary font-semibold hover:text-primary/80 inline-flex items-center gap-0.5 transition-colors">
               View all <ArrowRight class="w-3 h-3" />
             </button>
           </div>
@@ -277,7 +277,7 @@ function getProteinTone(current: number, target: number) {
               </div>
               Pantry
             </h3>
-            <button @click="router.push('/pantry')" class="text-xs text-primary font-semibold hover:text-primary/80 inline-flex items-center gap-0.5 transition-colors">
+            <button type="button" @click="router.push('/pantry')" class="text-xs text-primary font-semibold hover:text-primary/80 inline-flex items-center gap-0.5 transition-colors">
               Open <ArrowRight class="w-3 h-3" />
             </button>
           </div>
@@ -316,7 +316,7 @@ function getProteinTone(current: number, target: number) {
               </div>
               Daily Health
             </h3>
-            <button @click="router.push('/settings')" class="text-xs text-primary font-semibold hover:text-primary/80 inline-flex items-center gap-0.5 transition-colors">
+            <button type="button" @click="router.push('/settings')" class="text-xs text-primary font-semibold hover:text-primary/80 inline-flex items-center gap-0.5 transition-colors">
               Targets <ArrowRight class="w-3 h-3" />
             </button>
           </div>
@@ -462,7 +462,7 @@ function getProteinTone(current: number, target: number) {
             </div>
             This Week
           </h3>
-          <button @click="router.push('/planner')" class="text-xs text-primary font-semibold hover:text-primary/80 inline-flex items-center gap-0.5 transition-colors">
+          <button type="button" @click="router.push('/planner')" class="text-xs text-primary font-semibold hover:text-primary/80 inline-flex items-center gap-0.5 transition-colors">
             Full planner <ArrowRight class="w-3 h-3" />
           </button>
         </div>
@@ -500,7 +500,7 @@ function getProteinTone(current: number, target: number) {
       <div class="lg:col-span-12">
         <div class="flex items-center justify-between mb-5">
           <h3 class="font-bold text-foreground tracking-tight">Recent Recipes</h3>
-          <button @click="router.push('/recipes')" class="text-xs text-primary font-semibold hover:text-primary/80 inline-flex items-center gap-0.5 transition-colors">
+          <button type="button" @click="router.push('/recipes')" class="text-xs text-primary font-semibold hover:text-primary/80 inline-flex items-center gap-0.5 transition-colors">
             View all <ArrowRight class="w-3 h-3" />
           </button>
         </div>

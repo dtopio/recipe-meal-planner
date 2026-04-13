@@ -25,7 +25,6 @@ const rootDirectory = path.resolve(__dirname, '..')
 const distDirectory = path.join(rootDirectory, 'dist')
 
 const isProduction = process.argv.includes('--production') || process.env.NODE_ENV === 'production'
-const defaultCspDirectives = helmet.contentSecurityPolicy.getDefaultDirectives()
 
 const app = express()
 
@@ -36,12 +35,13 @@ if (isProduction) {
 
 // ── Security headers ───────────────────────────────────────────
 app.use(helmet({
-  contentSecurityPolicy: isProduction ? {
-    directives: {
-      ...defaultCspDirectives,
-      'img-src': ["'self'", 'data:', 'https:'],
-    },
-  } : false,
+  contentSecurityPolicy: isProduction
+    ? {
+        directives: {
+          imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+        },
+      }
+    : false,
   crossOriginEmbedderPolicy: false,
   hsts: isProduction ? { maxAge: 63072000, includeSubDomains: true } : false,
 }))
@@ -59,7 +59,11 @@ app.use(express.json({ limit: '1mb' }))
 // ── HTTPS redirect in production ───────────────────────────────
 if (isProduction) {
   app.use((req, res, next) => {
-    if (req.get('x-forwarded-proto') !== 'https') {
+    const host = req.get('host') || ''
+    const isLocalPreview = /^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(host)
+    const forwardedProto = req.get('x-forwarded-proto')
+
+    if (!isLocalPreview && forwardedProto && forwardedProto !== 'https') {
       return res.redirect(301, `https://${req.get('host')}${req.originalUrl}`)
     }
     next()

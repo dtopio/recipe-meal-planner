@@ -1,49 +1,182 @@
-# Recipe Meal Planner - Frontend
+# MealSync Offline
 
-A modern, responsive Vue.js 3 frontend application for planning meals and managing recipes. Built with Vite for lightning-fast development and Tailwind CSS for beautiful, utility-first styling.
+This branch is the fully offline version of the app. It runs the frontend and backend locally on one machine and stores data in a local SQLite file instead of Supabase or any hosted database.
+
+If someone clones this branch, they do not need Render or Supabase to use it.
+
+## What This Branch Includes
+
+- Vue 3 frontend
+- Express backend
+- SQLite local database
+- Sample offline data already included in `server/data/mealsync.db`
+- Fallback JSON snapshot in `server/data/db.json`
 
 ## Tech Stack
 
-- **Vue.js 3** - Progressive JavaScript framework
-- **Vite** - Next generation frontend build tool
-- **Tailwind CSS** - Utility-first CSS framework
-- **Node.js** - JavaScript runtime (v16 or higher recommended)
-- **npm** - Package manager
+- Vue 3
+- Vite
+- Express
+- SQLite via `better-sqlite3`
+- Tailwind CSS
+- Node.js
 
-## Prerequisites
+## Project Structure
 
-Before you begin, ensure you have the following installed:
-
-- **Node.js** (v16 or higher) - [Download](https://nodejs.org/)
-- **npm** (comes with Node.js) - Verify with `npm --version`
-- **Git** - [Download](https://git-scm.com/)
-
-## Installation & Setup
-
-Follow these steps to set up the project on your local machine:
-
-### 1. Clone the Repository
-
-```bash
-git clone <repository-url>
-cd recipe-meal-planner-front-end
+```text
+recipe-meal-planner/
+|-- public/                 Static files
+|-- server/                 Express backend
+|   |-- data/
+|   |   |-- mealsync.db     Main local SQLite database
+|   |   `-- db.json         Fallback JSON snapshot
+|   |-- routes/             API route handlers
+|   |-- db.js               Local SQLite database loader
+|   `-- seed.js             Default seed data
+|-- src/                    Vue frontend
+|-- .env.example            Optional environment template
+|-- package.json
+`-- README.md
 ```
 
-### 2. Install Dependencies
+## Requirements
+
+- Node.js 18 or newer
+- npm
+- Git
+
+## Run Offline Step By Step
+
+### 1. Clone this branch
+
+```bash
+git clone --branch local-front-and-back-end-offline https://github.com/dtopio/recipe-meal-planner.git
+cd recipe-meal-planner
+```
+
+### 2. Install dependencies
 
 ```bash
 npm install
 ```
 
-This command will install all required packages listed in `package.json`.
+### 3. Optional: create local environment file
 
-### 3. Start Development Server
+The app runs offline without API keys. The variables below are only for optional features like USDA nutrition lookup and OpenRouter AI features.
+
+Create a `.env.local` file in the project root.
+
+On Windows:
+
+```bash
+copy .env.example .env.local
+```
+
+On macOS or Linux:
+
+```bash
+cp .env.example .env.local
+```
+
+Example `.env.local`:
+
+```env
+APP_URL=http://localhost:3000
+USDA_API_KEY=
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=qwen/qwen3.6-plus:free
+```
+
+Notes:
+
+- You can leave `USDA_API_KEY` empty if you do not need nutrition lookup.
+- You can leave `OPENROUTER_API_KEY` empty if you do not need AI features.
+- If you want pure offline use, leaving both keys empty is fine.
+- If you do not need any optional integrations, you can skip creating `.env.local` entirely.
+
+### 4. Start the app
 
 ```bash
 npm run dev
 ```
 
-The application will start on `http://localhost:5173/` (or the next available port if 5173 is in use). Your browser should automatically open the application.
+This starts the local backend and serves the frontend from the same app.
+
+### 5. Open the app
+
+Open:
+
+```text
+http://localhost:3000
+```
+
+Health check:
+
+```text
+http://localhost:3000/api/health
+```
+
+## Important Offline Notes
+
+- This branch does not use Supabase.
+- This branch does not require Render.
+- The backend and frontend are both started by `npm run dev`.
+- The default local port is `3000`.
+
+## Local Database Files
+
+The local data lives here:
+
+- `server/data/mealsync.db`
+- `server/data/db.json`
+
+What they do:
+
+- `mealsync.db` is the real SQLite database used at runtime.
+- `db.json` is a fallback snapshot the app can migrate from if the SQLite file is missing.
+- `seed.js` contains the default collection structure and sample seed content.
+
+## Demo Accounts
+
+This branch includes seeded offline demo accounts:
+
+- `sarah@example.com` / `Password123!`
+- `mike@example.com` / `Password123!`
+- `emma@example.com` / `Password123!`
+
+Quick copy-paste login:
+
+```text
+Email: sarah@example.com
+Password: Password123!
+```
+
+```text
+Email: mike@example.com
+Password: Password123!
+```
+
+```text
+Email: emma@example.com
+Password: Password123!
+```
+
+The local database file may also include additional accounts that were created later during local testing.
+
+## Resetting The Offline Database
+
+If you want to reset the app back to local sample data:
+
+1. Stop the app.
+2. Delete `server/data/mealsync.db`
+3. Delete `server/data/mealsync.db-shm` if it exists.
+4. Delete `server/data/mealsync.db-wal` if it exists.
+5. Start the app again with `npm run dev`
+
+What happens next:
+
+- If `server/data/db.json` exists, the app rebuilds the SQLite database from that file.
+- If both the SQLite file and `db.json` are missing, the app recreates the data from `server/seed.js`.
 
 ## Available Scripts
 
@@ -53,148 +186,93 @@ The application will start on `http://localhost:5173/` (or the next available po
 npm run dev
 ```
 
-Starts the development server with hot module replacement (HMR). Any changes you make to the code will automatically refresh in the browser.
+Starts the local offline app in development mode at `http://localhost:3000`.
 
-### Build for Production
+### Production Build
 
 ```bash
 npm run build
 ```
 
-Creates an optimized production build in the `dist/` directory. The build is minified and ready for deployment.
+Builds the frontend assets.
 
-### Preview Production Build
+### Local Production Preview
 
 ```bash
 npm run preview
 ```
 
-Locally preview the production build before deployment.
+Runs the server in production mode locally.
 
-## Project Structure
+### Production Start
 
-```
-recipe-meal-planner-front-end/
-├── src/
-│   ├── components/          # Reusable Vue components
-│   ├── App.vue              # Root Vue component
-│   ├── main.js              # Application entry point
-│   └── style.css            # Global styles (with Tailwind directives)
-├── public/                  # Static assets
-├── index.html               # HTML entry point
-├── package.json             # Project dependencies and scripts
-├── package-lock.json        # Locked dependency versions
-├── vite.config.js           # Vite configuration
-├── tailwind.config.js       # Tailwind CSS configuration
-├── postcss.config.js        # PostCSS configuration
-└── README.md                # This file
+```bash
+npm start
 ```
 
-## Development Guidelines
+Runs the production server locally.
 
-### Vue Components
+## Optional Environment Variables
 
-- Place reusable components in the `src/components/` directory
-- Use Single File Components (.vue) format
-- Follow Vue 3 Composition API or Options API conventions
+From `.env.example`:
 
-### Styling with Tailwind CSS
+- `APP_URL=http://localhost:3000`
+- `USDA_API_KEY=...`
+- `OPENROUTER_API_KEY=...`
+- `OPENROUTER_MODEL=qwen/qwen3.6-plus:free`
 
-Tailwind CSS is preconfigured. Use utility classes directly in your components:
+If you leave these unset:
 
-```vue
-<template>
-  <div class="flex items-center justify-center min-h-screen bg-gray-100">
-    <button class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
-      Click me
-    </button>
-  </div>
-</template>
+- the app still works offline
+- USDA-based nutrition features may be unavailable
+- AI summary and AI recipe helper features may be unavailable
+
+Recommended local setup:
+
+```env
+APP_URL=http://localhost:3000
+USDA_API_KEY=
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=qwen/qwen3.6-plus:free
 ```
-
-### Hot Module Replacement (HMR)
-
-During development, Vue components automatically refresh when you save changes. This provides a fast development experience without losing application state.
-
-## Building for Production
-
-1. Run the build command:
-   ```bash
-   npm run build
-   ```
-
-2. The `dist/` folder will contain your production-ready application
-
-3. Deploy the contents of the `dist/` folder to your hosting service
 
 ## Troubleshooting
 
-### Port 5173 Already in Use
+### Port 3000 already in use
 
-If port 5173 is already in use, Vite will automatically attempt to use the next available port. Check the terminal output to see which port is being used.
+Stop the other process using port `3000`, then run:
 
-### Dependencies Installation Issues
+```bash
+npm run dev
+```
 
-If you encounter issues during `npm install`:
+### Fresh reinstall
 
-1. Clear npm cache:
-   ```bash
-   npm cache clean --force
-   ```
+If dependencies get messy:
 
-2. Delete `node_modules` and `package-lock.json`:
-   ```bash
-   rm -rf node_modules package-lock.json
-   ```
+```bash
+rm -rf node_modules
+npm install
+```
 
-3. Reinstall dependencies:
-   ```bash
-   npm install
-   ```
+On Windows PowerShell:
 
-### Build Errors
+```powershell
+Remove-Item node_modules -Recurse -Force
+npm install
+```
 
-- Ensure all Vue components are properly formatted
-- Check that component imports are correct
-- Clear browser cache and rebuild if styles aren't updating
+### Database looks wrong
 
-## Contributing
+Reset the local database using the steps in the "Resetting The Offline Database" section above.
 
-1. Create a new branch for your feature:
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
+## Summary
 
-2. Make your changes and commit:
-   ```bash
-   git add .
-   git commit -m "Add your commit message"
-   ```
+To run this branch offline, the short version is:
 
-3. Push to the repository:
-   ```bash
-   git push origin feature/your-feature-name
-   ```
+1. Clone `local-front-and-back-end-offline`
+2. Run `npm install`
+3. Run `npm run dev`
+4. Open `http://localhost:3000`
 
-4. Create a Pull Request for team review
-
-## Resources
-
-- [Vue.js Documentation](https://vuejs.org/)
-- [Vite Documentation](https://vitejs.dev/)
-- [Tailwind CSS Documentation](https://tailwindcss.com/)
-- [Vue.js 3 Composition API](https://vuejs.org/guide/extras/composition-api-faq.html)
-
-## Team
-
-This project is developed for **CSCI 441 - Final Project**.
-
-## License
-
-MIT
-
----
-
-**Last Updated:** February 2026
-
-For questions or issues, please contact the development team or create an issue in the repository.
+That is enough to use the app locally with the included SQLite database.

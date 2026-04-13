@@ -146,6 +146,23 @@ async function handleGenerateSummary() {
   }
 }
 
+async function handleRemoveItem(itemId: string) {
+  try {
+    await store.removeItem(itemId)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to remove shopping item')
+  }
+}
+
+async function handleClearCompleted() {
+  try {
+    await store.clearChecked(store.periodWeekStart)
+    toast.success('Completed items cleared')
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to clear completed items')
+  }
+}
+
 function handleClearAll() {
   if (store.allItemCount === 0) {
     return
@@ -475,6 +492,7 @@ function handleDownloadCsv() {
   <div class="sticky top-16 z-20 -mx-5 bg-background/95 px-5 pb-3 pt-1 backdrop-blur-lg lg:-mx-10 lg:px-10">
     <div class="mb-3 flex flex-wrap gap-2">
       <button
+        type="button"
         v-for="option in periodOptions"
         :key="option.value"
         class="rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors"
@@ -497,6 +515,7 @@ function handleDownloadCsv() {
           :style="{ borderRadius: '0.75rem' }"
         />
         <button
+          type="button"
           v-if="store.searchQuery"
           @click="store.searchQuery = ''"
           class="absolute right-3 top-1/2 rounded-lg p-1 -translate-y-1/2 hover:bg-muted"
@@ -585,19 +604,20 @@ function handleDownloadCsv() {
           <span class="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{{ items.length }}</span>
         </div>
         <div class="surface-card overflow-hidden divide-y divide-border/50">
-          <ShoppingListItemRow
-            v-for="item in items"
-            :key="item.id"
-            :item="item"
-            @toggle="store.toggleItem(item.id)"
-            @remove="store.removeItem(item.id)"
-          />
+            <ShoppingListItemRow
+              v-for="item in items"
+              :key="item.id"
+              :item="item"
+              @toggle="store.toggleItem(item.id)"
+              @remove="handleRemoveItem(item.id)"
+            />
         </div>
       </div>
     </div>
 
     <div v-if="store.checkedItems.length > 0" class="mt-8">
       <button
+        type="button"
         @click="showCompleted = !showCompleted"
         class="tap-target mb-3 flex items-center gap-2 text-sm font-bold text-muted-foreground transition-colors hover:text-foreground"
       >
@@ -620,14 +640,14 @@ function handleDownloadCsv() {
               :key="item.id"
               :item="item"
               @toggle="store.toggleItem(item.id)"
-              @remove="store.removeItem(item.id)"
+              @remove="handleRemoveItem(item.id)"
             />
           </div>
           <Button
             variant="outline"
             size="sm"
             class="border-destructive/20 text-destructive hover:bg-destructive/5"
-            @click="store.clearChecked(store.periodWeekStart)"
+            @click="handleClearCompleted"
           >
             <Trash2 class="mr-1.5 h-3.5 w-3.5" /> Clear completed
           </Button>

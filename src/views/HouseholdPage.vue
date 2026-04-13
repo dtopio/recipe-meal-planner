@@ -49,6 +49,15 @@ async function saveHouseholdName() {
   }
 }
 
+async function handleRegenerateInvite() {
+  try {
+    await household.regenerateInvite()
+    toast.success('Invite code regenerated')
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Failed to regenerate invite code')
+  }
+}
+
 function handleKick(member: { id: string; displayName: string }) {
   ui.showConfirm({
     title: `Remove ${member.displayName}?`,
@@ -140,7 +149,7 @@ function handleLeave() {
               <template v-else>
                 <div class="flex items-center gap-2">
                   <h2 class="text-xl font-bold text-foreground tracking-tight">{{ household.household.name }}</h2>
-                  <button v-if="household.isAdmin" @click="startEditName" class="p-1 rounded-lg hover:bg-muted transition-colors" title="Rename household">
+                  <button v-if="household.isAdmin" type="button" @click="startEditName" class="p-1 rounded-lg hover:bg-muted transition-colors" title="Rename household">
                     <Pencil class="w-3.5 h-3.5 text-muted-foreground" />
                   </button>
                 </div>
@@ -179,6 +188,7 @@ function handleLeave() {
               </span>
               <div v-if="household.isAdmin && member.userId !== auth.user?.id" class="flex items-center gap-1">
                 <button
+                  type="button"
                   @click="handleRoleChange(member)"
                   class="p-1.5 rounded-lg hover:bg-muted transition-colors tap-target"
                   :title="member.role === 'admin' ? 'Demote to member' : 'Promote to admin'"
@@ -187,6 +197,7 @@ function handleLeave() {
                   <ShieldPlus v-else class="w-4 h-4 text-muted-foreground hover:text-primary" />
                 </button>
                 <button
+                  type="button"
                   @click="handleKick(member)"
                   class="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors tap-target"
                   title="Remove from household"
@@ -210,13 +221,13 @@ function handleLeave() {
             <code class="flex-1 text-sm font-bold tracking-wider text-foreground text-center">
               {{ household.invite?.code || '—' }}
             </code>
-            <button @click="copyCode" class="p-2 rounded-lg hover:bg-background transition-colors tap-target press-scale">
+            <button type="button" @click="copyCode" class="p-2 rounded-lg hover:bg-background transition-colors tap-target press-scale">
               <Check v-if="copied" class="w-4 h-4 text-emerald-500" />
               <Copy v-else class="w-4 h-4 text-muted-foreground" />
             </button>
           </div>
 
-          <Button variant="outline" size="sm" class="w-full" @click="household.regenerateInvite()" :disabled="household.loading">
+          <Button variant="outline" size="sm" class="w-full" @click="handleRegenerateInvite" :disabled="household.loading || !household.isAdmin">
             <RefreshCw class="w-3.5 h-3.5 mr-1.5" /> Regenerate Code
           </Button>
         </div>

@@ -444,6 +444,7 @@ function handleDelete() {
             <p class="text-sm font-semibold text-foreground mb-3">Your rating</p>
             <div class="flex items-center gap-1 mb-4">
               <button
+                type="button"
                 v-for="i in 5"
                 :key="'rate-' + i"
                 @click="myRating = i"
@@ -661,6 +662,7 @@ function handleDelete() {
 
             <div class="mt-4 flex flex-wrap gap-2">
               <button
+                type="button"
                 v-for="prompt in quickAskPrompts"
                 :key="prompt"
                 class="rounded-full border border-border/70 px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/[0.04] hover:text-primary"
@@ -734,11 +736,11 @@ function handleDelete() {
             <div class="flex items-center justify-between mb-5">
               <h2 class="text-lg font-bold text-foreground tracking-tight">Ingredients</h2>
               <div class="flex items-center gap-1 bg-muted rounded-xl p-1">
-                <button @click="scaleDown" class="p-1.5 rounded-lg hover:bg-card transition-colors tap-target" aria-label="Decrease">
+                <button type="button" @click="scaleDown" class="p-1.5 rounded-lg hover:bg-card transition-colors tap-target" aria-label="Decrease">
                   <Minus class="w-3.5 h-3.5" />
                 </button>
                 <span class="text-xs font-bold w-8 text-center">{{ scaleMultiplier }}x</span>
-                <button @click="scaleUp" class="p-1.5 rounded-lg hover:bg-card transition-colors tap-target" aria-label="Increase">
+                <button type="button" @click="scaleUp" class="p-1.5 rounded-lg hover:bg-card transition-colors tap-target" aria-label="Increase">
                   <Plus class="w-3.5 h-3.5" />
                 </button>
               </div>

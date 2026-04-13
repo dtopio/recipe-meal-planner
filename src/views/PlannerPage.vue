@@ -234,49 +234,53 @@ async function handleGenerateShoppingList() {
     <div class="flex gap-6">
       <div class="flex-1 min-w-0">
         <div class="hidden lg:block">
-          <div class="surface-card overflow-hidden">
-            <div class="grid grid-cols-[100px_repeat(7,minmax(0,1fr))] border-b border-border/40">
-              <div class="p-3" />
-              <div
-                v-for="date in planner.weekDates"
-                :key="'h-' + date"
-                class="min-w-0 p-3 text-center transition-colors relative"
-                :class="isToday(date) ? 'bg-primary/[0.05]' : ''"
-              >
-                <p class="text-[11px] font-bold uppercase tracking-wider" :class="isToday(date) ? 'text-primary' : 'text-muted-foreground'">
-                  {{ getDayNameShort(date) }}
-                </p>
-                <p class="text-sm font-semibold mt-0.5" :class="isToday(date) ? 'text-primary' : 'text-foreground'">
-                  {{ formatDateShort(date) }}
-                </p>
-                <span v-if="isToday(date)" class="inline-block text-[9px] bg-primary text-primary-foreground px-2 py-0.5 rounded-full mt-1 font-bold">Today</span>
+          <div class="surface-card overflow-hidden flex flex-col">
+            <!-- Horizontal scroll wrapper for header and meal rows together -->
+            <div class="overflow-x-auto flex-1">
+              <!-- Header -->
+              <div class="grid grid-cols-[100px_repeat(7,280px)] border-b border-border/40 w-max">
+                <div class="p-4" />
+                <div
+                  v-for="date in planner.weekDates"
+                  :key="'h-' + date"
+                  class="p-4 text-center transition-colors relative"
+                  :class="isToday(date) ? 'bg-primary/[0.05]' : ''"
+                >
+                  <p class="text-[11px] font-bold uppercase tracking-wider" :class="isToday(date) ? 'text-primary' : 'text-muted-foreground'">
+                    {{ getDayNameShort(date) }}
+                  </p>
+                  <p class="text-sm font-semibold mt-0.5" :class="isToday(date) ? 'text-primary' : 'text-foreground'">
+                    {{ formatDateShort(date) }}
+                  </p>
+                  <span v-if="isToday(date)" class="inline-block text-[9px] bg-primary text-primary-foreground px-2 py-0.5 rounded-full mt-1 font-bold">Today</span>
+                </div>
               </div>
-            </div>
 
-            <div
-              v-for="(mealType, mealIndex) in mealTypes"
-              :key="mealType"
-              class="grid grid-cols-[100px_repeat(7,minmax(0,1fr))]"
-              :class="mealIndex < mealTypes.length - 1 ? 'border-b border-border/30' : ''"
-            >
-              <div class="p-3 flex flex-col items-center justify-center gap-1.5 border-r border-border/30 bg-muted/20">
-                <component :is="getMealPeriodDisplay(mealType).icon" class="w-4.5 h-4.5" :class="getMealPeriodDisplay(mealType).color" />
-                <span class="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{{ getMealPeriodDisplay(mealType).label }}</span>
+              <!-- Meal rows -->
+              <div
+                v-for="(mealType, mealIndex) in mealTypes"
+                :key="mealType"
+                class="grid grid-cols-[100px_repeat(7,280px)] w-max"
+                :class="mealIndex < mealTypes.length - 1 ? 'border-b border-border/30' : ''"
+              >
+              <div class="p-4 flex flex-col items-center justify-center gap-2 border-r border-border/30 bg-muted/20">
+                <component :is="getMealPeriodDisplay(mealType).icon" class="w-5 h-5" :class="getMealPeriodDisplay(mealType).color" />
+                <span class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{{ getMealPeriodDisplay(mealType).label }}</span>
               </div>
 
               <div
                 v-for="date in planner.weekDates"
                 :key="date + '-' + mealType"
-                class="min-w-0 p-2 min-h-[120px] transition-colors border-r border-border/20 last:border-r-0"
+                class="p-2.5 min-h-[180px] max-h-[240px] transition-colors border-r border-border/20 last:border-r-0 flex flex-col"
                 :class="isToday(date) ? 'bg-primary/[0.03]' : ''"
                 @dragover="onDragOver"
                 @drop="onDrop(date, mealType, $event)"
               >
                 <div
-                  class="h-full min-w-0 rounded-xl transition-all p-1.5"
-                  :class="draggedRecipe ? 'ring-2 ring-dashed ring-primary/20 bg-primary/[0.02]' : ''"
+                  class="flex-1 rounded-xl transition-all p-2 flex flex-col overflow-hidden"
+                  :class="draggedRecipe ? 'ring-2 ring-dashed ring-primary/20 bg-primary/[0.02]' : 'hover:bg-muted/30'"
                 >
-                  <div v-if="getMealSlots(date, mealType).length" class="space-y-1.5">
+                  <div v-if="getMealSlots(date, mealType).length" class="space-y-1 overflow-y-auto pr-1.5 flex-1 scrollbar-thin scrollbar-thumb-rounded scrollbar-thumb-border scrollbar-track-transparent hover:scrollbar-thumb-muted-foreground/30">
                     <MealSlotCard
                       v-for="slot in getMealSlots(date, mealType)"
                       :key="slot.id"
@@ -292,14 +296,16 @@ async function handleGenerateShoppingList() {
                   </div>
 
                   <button
-                    class="flex min-h-[40px] w-full items-center justify-center rounded-lg border border-dashed border-border/40 px-2 py-2 text-[11px] font-semibold text-muted-foreground/40 transition-all hover:border-primary/30 hover:bg-primary/[0.04] hover:text-primary"
-                    :class="getMealSlots(date, mealType).length ? 'mt-1.5' : 'h-full'"
+                    v-if="!getMealSlots(date, mealType).length || getMealSlots(date, mealType).length < 3"
+                    type="button"
+                    class="flex items-center justify-center rounded-lg border border-dashed border-border/40 px-2 py-2 text-[11px] font-semibold text-muted-foreground/40 transition-all hover:border-primary/30 hover:bg-primary/[0.04] hover:text-primary mt-auto"
                     @click="openAssignPanel(date, mealType)"
                   >
                     + Add
                   </button>
                 </div>
               </div>
+            </div>
             </div>
           </div>
         </div>
@@ -353,6 +359,7 @@ async function handleGenerateShoppingList() {
                       />
 
                       <button
+                        type="button"
                         class="flex min-h-[48px] w-full items-center justify-center rounded-xl border border-dashed border-border/60 px-3 py-3 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/[0.03] hover:text-primary"
                         @click="openAssignPanel(date, mealType)"
                       >
@@ -396,7 +403,7 @@ async function handleGenerateShoppingList() {
           <div class="sticky top-20 surface-elevated overflow-hidden max-h-[calc(100vh-7rem)]">
             <div class="p-4 border-b border-border/50 flex items-center justify-between">
               <h3 class="text-sm font-bold text-foreground">Recipe Library</h3>
-              <button @click="showRecipePanel = false" class="p-1.5 rounded-lg hover:bg-muted transition-colors">
+              <button type="button" @click="showRecipePanel = false" class="p-1.5 rounded-lg hover:bg-muted transition-colors">
                 <X class="w-4 h-4" />
               </button>
             </div>
@@ -460,13 +467,14 @@ async function handleGenerateShoppingList() {
                     Add to {{ formatMealPeriodLabel(assignTarget.mealType).toLowerCase() }}
                   </p>
                 </div>
-                <button @click="showRecipePanel = false" class="p-2 rounded-xl hover:bg-muted tap-target"><X class="w-5 h-5" /></button>
+                <button type="button" @click="showRecipePanel = false" class="p-2 rounded-xl hover:bg-muted tap-target"><X class="w-5 h-5" /></button>
               </div>
               <div class="px-5 pb-3 shrink-0">
                 <Input v-model="recipeSearch" placeholder="Search recipes..." class="h-11" />
               </div>
               <div class="overflow-y-auto flex-1 px-4 pb-8 space-y-2">
                 <button
+                  type="button"
                   v-for="recipe in filteredRecipes"
                   :key="recipe.id"
                   @click="assignRecipe(recipe)"

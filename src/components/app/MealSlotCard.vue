@@ -65,6 +65,7 @@ const currentServings = computed(() => props.slot.servings || props.slot.recipe?
         <div class="mt-2">
           <div class="inline-flex items-center gap-1 rounded-full bg-muted px-1 py-0.5 text-[11px] font-semibold text-foreground">
             <button
+              type="button"
               class="rounded-full p-1 transition-colors hover:bg-background disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="servingsSaving || currentServings <= 1"
               @click.stop="$emit('decreaseServings')"
@@ -76,6 +77,7 @@ const currentServings = computed(() => props.slot.servings || props.slot.recipe?
               <template v-else>{{ currentServings }} serving{{ currentServings === 1 ? '' : 's' }}</template>
             </span>
             <button
+              type="button"
               class="rounded-full p-1 transition-colors hover:bg-background disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="servingsSaving || currentServings >= 20"
               @click.stop="$emit('increaseServings')"
@@ -87,6 +89,7 @@ const currentServings = computed(() => props.slot.servings || props.slot.recipe?
       </div>
 
       <button
+        type="button"
         @click.stop="$emit('toggleRecurring')"
         class="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-primary/8 transition-all"
         :aria-label="slot.repeatWeekly ? 'Disable weekly repeat' : 'Repeat weekly'"
@@ -95,6 +98,7 @@ const currentServings = computed(() => props.slot.servings || props.slot.recipe?
       </button>
 
       <button
+        type="button"
         @click.stop="$emit('remove')"
         class="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-destructive/8 transition-all"
         aria-label="Remove meal"

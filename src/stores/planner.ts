@@ -17,7 +17,7 @@ export const usePlannerStore = defineStore('planner', () => {
     return Array.from({ length: 7 }, (_, i) => {
       const d = new Date(start)
       d.setDate(start.getDate() + i)
-      return d.toISOString().split('T')[0]
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     })
   })
 
@@ -141,7 +141,8 @@ export const usePlannerStore = defineStore('planner', () => {
   async function navigateWeek(direction: 'prev' | 'next') {
     const start = new Date(currentWeekStart.value + 'T00:00:00')
     start.setDate(start.getDate() + (direction === 'next' ? 7 : -7))
-    await loadWeekPlan(start.toISOString().split('T')[0])
+    const key = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`
+    await loadWeekPlan(key)
   }
 
   const assignedMealCount = computed(() =>

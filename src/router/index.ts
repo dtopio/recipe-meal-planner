@@ -149,7 +149,7 @@ router.beforeEach((to, _from, next) => {
   }
 
   if (to.meta.guest && token) {
-    return next({ name: 'dashboard' })
+    return next({ name: hasHousehold ? 'dashboard' : 'onboarding' })
   }
 
   if (to.meta.requiresHousehold && !hasHousehold) {

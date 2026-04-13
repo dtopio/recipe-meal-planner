@@ -71,6 +71,7 @@ defineEmits<{
     />
 
     <button
+      type="button"
       @click.stop="$emit('remove')"
       class="tap-target -mr-1 rounded-xl p-2.5 transition-all hover:bg-destructive/8 active:bg-destructive/12 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100"
       aria-label="Remove item"

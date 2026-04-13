@@ -39,7 +39,7 @@ export const useShoppingStore = defineStore('shopping', () => {
     const weekStart = periodWeekStart.value
     const weekEndDate = new Date(`${weekStart}T00:00:00`)
     weekEndDate.setDate(weekEndDate.getDate() + 6)
-    const weekEnd = weekEndDate.toISOString().split('T')[0]
+    const weekEnd = `${weekEndDate.getFullYear()}-${String(weekEndDate.getMonth() + 1).padStart(2, '0')}-${String(weekEndDate.getDate()).padStart(2, '0')}`
     const monthPrefix = today.slice(0, 7)
 
     return items.value.filter(item => {
@@ -167,24 +167,34 @@ export const useShoppingStore = defineStore('shopping', () => {
   }
 
   async function removeItem(id: string) {
-    await apiClient<boolean>(`/shopping/${id}`, {
-      method: 'DELETE',
-    })
-    items.value = items.value.filter(i => i.id !== id)
+    try {
+      await apiClient<boolean>(`/shopping/${id}`, {
+        method: 'DELETE',
+      })
+      items.value = items.value.filter(i => i.id !== id)
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to remove shopping item')
+      throw new Error(error.value)
+    }
   }
 
   async function clearChecked(weekStart?: string) {
     const targetWeekStart = weekStart || periodWeekStart.value
     const checkedIds = new Set(checkedItems.value.map(item => item.id))
 
-    await apiClient<boolean>('/shopping/checked', {
-      method: 'DELETE',
-      body: JSON.stringify({
-        ...(targetWeekStart ? { weekStart: targetWeekStart } : {}),
-        period: periodFilter.value,
-      }),
-    })
-    items.value = items.value.filter(i => !checkedIds.has(i.id))
+    try {
+      await apiClient<boolean>('/shopping/checked', {
+        method: 'DELETE',
+        body: JSON.stringify({
+          ...(targetWeekStart ? { weekStart: targetWeekStart } : {}),
+          period: periodFilter.value,
+        }),
+      })
+      items.value = items.value.filter(i => !checkedIds.has(i.id))
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Failed to clear completed items')
+      throw new Error(error.value)
+    }
   }
 
   async function clearAll() {
