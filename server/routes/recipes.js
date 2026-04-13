@@ -57,6 +57,60 @@ router.get('/', requireAuth, requireHousehold, (req, res) => {
   sendOk(res, paginate(all, req.query))
 })
 
+// ── Import recipe BEFORE any /:recipeId routes ──
+router.post('/import', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
+  try {
+    const dto = importRecipeSchema.parse(req.body)
+    const duplicate = db.data.recipes.find(candidate => (
+      candidate.householdId === req.householdId &&
+      candidate.sourceUrl?.toLowerCase() === dto.url.toLowerCase()
+    ))
+
+    if (duplicate) {
+      return sendError(
+        res,
+        409,
+        'That recipe has already been imported',
+        'DUPLICATE_RECIPE_SOURCE',
+        { existingRecipe: { id: duplicate.id, title: duplicate.title } }
+      )
+    }
+
+    const imported = await importRecipeFromUrl(dto.url)
+    const timestamp = nowIso()
+    const recipe = {
+      id: createId('recipe'),
+      householdId: req.householdId,
+      title: imported.title,
+      description: imported.description,
+      imageUrl: imported.imageUrl,
+      prepTime: imported.prepTime,
+      cookTime: imported.cookTime,
+      servings: imported.servings,
+      tags: imported.tags,
+      ingredients: imported.ingredients.map(ingredient => ({
+        id: createId('ing'),
+        quantity: ingredient.quantity,
+        unit: ingredient.unit,
+        name: ingredient.name,
+      })),
+      instructions: imported.instructions,
+      sourceUrl: imported.sourceUrl,
+      createdBy: req.auth.user.id,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }
+
+    db.data.recipes.push(recipe)
+    await db.save()
+    sendOk(res, recipe, 'Recipe imported')
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error during recipe import'
+    console.error('[Recipe Import Error]', message, error)
+    return sendError(res, 400, message, 'RECIPE_IMPORT_FAILED')
+  }
+}))
+
 router.get('/:recipeId', requireAuth, requireHousehold, (req, res) => {
   const recipe = db.data.recipes.find(candidate => (
     candidate.id === req.params.recipeId &&
@@ -261,53 +315,6 @@ router.delete('/:recipeId/reviews', requireAuth, requireHousehold, asyncHandler(
   db.data.recipeReviews = db.data.recipeReviews.filter(r => !(r.recipeId === recipe.id && r.userId === req.auth.user.id))
   await db.save()
   sendOk(res, true, 'Review removed')
-}))
-
-router.post('/import', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
-  const dto = importRecipeSchema.parse(req.body)
-  const duplicate = db.data.recipes.find(candidate => (
-    candidate.householdId === req.householdId &&
-    candidate.sourceUrl?.toLowerCase() === dto.url.toLowerCase()
-  ))
-
-  if (duplicate) {
-    return sendError(
-      res,
-      409,
-      'That recipe has already been imported',
-      'DUPLICATE_RECIPE_SOURCE',
-      { existingRecipe: { id: duplicate.id, title: duplicate.title } }
-    )
-  }
-
-  const imported = await importRecipeFromUrl(dto.url)
-  const timestamp = nowIso()
-  const recipe = {
-    id: createId('recipe'),
-    householdId: req.householdId,
-    title: imported.title,
-    description: imported.description,
-    imageUrl: imported.imageUrl,
-    prepTime: imported.prepTime,
-    cookTime: imported.cookTime,
-    servings: imported.servings,
-    tags: imported.tags,
-    ingredients: imported.ingredients.map(ingredient => ({
-      id: createId('ing'),
-      quantity: ingredient.quantity,
-      unit: ingredient.unit,
-      name: ingredient.name,
-    })),
-    instructions: imported.instructions,
-    sourceUrl: imported.sourceUrl,
-    createdBy: req.auth.user.id,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  }
-
-  db.data.recipes.push(recipe)
-  await db.save()
-  sendOk(res, recipe, 'Recipe imported')
 }))
 
 export default router
