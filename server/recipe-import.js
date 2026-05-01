@@ -119,6 +119,27 @@ function extractInstructionSteps(instructions) {
   return []
 }
 
+function extractAuthor(recipeNode) {
+  const author = recipeNode.author
+  if (!author) return undefined
+
+  if (typeof author === 'string') {
+    return author.trim()
+  }
+
+  if (Array.isArray(author)) {
+    const first = author.find(a => a?.name || typeof a === 'string')
+    if (!first) return undefined
+    return typeof first === 'string' ? first.trim() : (first.name?.trim() || undefined)
+  }
+
+  if (typeof author === 'object') {
+    return author.name?.trim() || undefined
+  }
+
+  return undefined
+}
+
 function extractTags(recipeNode) {
   return normalizeTags([
     ...(Array.isArray(recipeNode.recipeCategory) ? recipeNode.recipeCategory : [recipeNode.recipeCategory]),
@@ -251,5 +272,6 @@ export async function importRecipeFromUrl(url) {
     ingredients,
     instructions,
     sourceUrl: url,
+    credits: extractAuthor(recipeNode),
   }
 }

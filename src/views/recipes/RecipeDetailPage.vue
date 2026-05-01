@@ -372,14 +372,19 @@ function handleDelete() {
               <Users class="w-4 h-4 text-primary/70" />
               {{ scaledServings }} servings
             </span>
-            <a
-              v-if="recipe.sourceUrl"
-              :href="recipe.sourceUrl"
-              target="_blank"
-              class="inline-flex items-center gap-1.5 text-primary hover:text-primary/80 font-medium transition-colors"
-            >
-              <ExternalLink class="w-4 h-4" /> Source
-            </a>
+            <div v-if="recipe.sourceUrl || recipe.credits" class="flex flex-wrap items-center gap-2">
+              <span v-if="recipe.credits" class="inline-flex items-center gap-1.5 text-muted-foreground font-medium">
+                By {{ recipe.credits }}
+              </span>
+              <a
+                v-if="recipe.sourceUrl"
+                :href="recipe.sourceUrl"
+                target="_blank"
+                class="inline-flex items-center gap-1.5 text-primary hover:text-primary/80 font-medium transition-colors"
+              >
+                <ExternalLink class="w-4 h-4" /> Source
+              </a>
+            </div>
           </div>
 
           <!-- Actions -->
