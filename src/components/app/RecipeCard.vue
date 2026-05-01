@@ -64,15 +64,20 @@ defineEmits<{
         {{ recipe.description }}
       </p>
 
-      <div class="mt-auto flex items-center gap-3 text-xs text-muted-foreground">
-        <span v-if="compact" class="inline-flex items-center gap-1">
-          <Clock class="w-3.5 h-3.5" />
-          {{ formatMinutes(recipe.prepTime + recipe.cookTime) }}
-        </span>
-        <span class="inline-flex items-center gap-1">
-          <Users class="w-3.5 h-3.5" />
-          {{ recipe.servings }}
-        </span>
+      <div class="mt-auto space-y-2">
+        <div class="flex items-center gap-3 text-xs text-muted-foreground">
+          <span v-if="compact" class="inline-flex items-center gap-1">
+            <Clock class="w-3.5 h-3.5" />
+            {{ formatMinutes(recipe.prepTime + recipe.cookTime) }}
+          </span>
+          <span class="inline-flex items-center gap-1">
+            <Users class="w-3.5 h-3.5" />
+            {{ recipe.servings }}
+          </span>
+        </div>
+        <p v-if="!compact && recipe.credits" class="text-[11px] text-muted-foreground truncate">
+          By {{ recipe.credits }}
+        </p>
       </div>
     </div>
   </article>

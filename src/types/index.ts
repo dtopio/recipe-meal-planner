@@ -83,6 +83,7 @@ export interface Recipe {
   ingredients: RecipeIngredient[]
   instructions: string[]
   sourceUrl?: string
+  credits?: string
   createdBy: string
   createdAt: string
   updatedAt: string

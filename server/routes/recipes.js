@@ -300,6 +300,7 @@ router.post('/import', requireAuth, requireHousehold, asyncHandler(async (req, r
     })),
     instructions: imported.instructions,
     sourceUrl: imported.sourceUrl,
+    credits: imported.credits,
     createdBy: req.auth.user.id,
     createdAt: timestamp,
     updatedAt: timestamp,
