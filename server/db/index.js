@@ -590,12 +590,13 @@ function toPreferencesObject(row) {
     if (Array.isArray(value)) return value
     if (typeof value === 'string') {
       try {
-        return JSON.parse(value)
+        const parsed = JSON.parse(value)
+        return Array.isArray(parsed) ? parsed : []
       } catch {
         return []
       }
     }
-    return value || []
+    return []
   }
 
   return {
@@ -610,12 +611,13 @@ function toRecipeObject(row) {
     if (Array.isArray(value)) return value
     if (typeof value === 'string') {
       try {
-        return JSON.parse(value)
+        const parsed = JSON.parse(value)
+        return Array.isArray(parsed) ? parsed : []
       } catch {
         return []
       }
     }
-    return value || []
+    return []
   }
 
   const parseJsonb = (value) => {
@@ -623,10 +625,10 @@ function toRecipeObject(row) {
       try {
         return JSON.parse(value)
       } catch {
-        return value
+        return []
       }
     }
-    return value || []
+    return Array.isArray(value) ? value : []
   }
 
   return {
