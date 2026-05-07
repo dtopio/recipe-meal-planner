@@ -14,7 +14,7 @@ import {
   getRecipeForHousehold,
   getRecipeNutrition,
   getRecipeAiSummary,
-  getRecipeAiAskResponse,
+  getRecipeAiAsk,
   clearRecipeCaches,
 } from '../helpers.js'
 import * as db from '../db/index.js'
@@ -105,7 +105,7 @@ router.post('/:recipeId/ask', requireAuth, requireHousehold, asyncHandler(async 
   }
 
   const dto = recipeAskSchema.parse(req.body)
-  const answer = await getRecipeAiAskResponse(recipe, dto.question, req.auth.user.healthTargets)
+  const answer = await getRecipeAiAsk(recipe, dto.question, req.auth.user.healthTargets)
   sendOk(res, answer)
 }))
 

@@ -515,3 +515,67 @@ export async function getShoppingListSummary(householdId) {
     lowStockItems: input.pantryItems,
   }
 }
+
+export const getShoppingSummary = getShoppingListSummary
+
+export function filterShoppingItemsByPeriod(items, period, weekStart) {
+  if (period === 'all') return items
+
+  const start = new Date(weekStart)
+  let end
+  if (period === 'day') {
+    end = new Date(start.getTime() + 24 * 60 * 60 * 1000)
+  } else if (period === 'week') {
+    end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
+  } else if (period === 'month') {
+    end = new Date(start.getTime() + 30 * 24 * 60 * 60 * 1000)
+  } else {
+    return items
+  }
+
+  return items.filter(item => {
+    const addedAt = new Date(item.addedAt).getTime()
+    return addedAt >= start.getTime() && addedAt < end.getTime()
+  })
+}
+
+export async function getWeekNutrition(householdId, weekStartDate) {
+  const slots = await getMealSlotsForWeek(householdId, weekStartDate)
+  const totals = { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  const days = {}
+
+  for (const slot of slots) {
+    if (!slot.recipe) continue
+    try {
+      const nutrition = await getRecipeNutrition(slot.recipe)
+      const multiplier = (slot.servings || slot.recipe.servings || 1) / (slot.recipe.servings || 1)
+      const scaled = scaleNutritionValues(nutrition.totals || nutrition, multiplier)
+      totals.calories += scaled.calories || 0
+      totals.protein += scaled.protein || 0
+      totals.carbs += scaled.carbs || 0
+      totals.fat += scaled.fat || 0
+      days[slot.date] = days[slot.date] || { calories: 0, protein: 0, carbs: 0, fat: 0 }
+      days[slot.date].calories += scaled.calories || 0
+      days[slot.date].protein += scaled.protein || 0
+      days[slot.date].carbs += scaled.carbs || 0
+      days[slot.date].fat += scaled.fat || 0
+    } catch (error) {
+      logger.warn('Failed to compute nutrition for slot', { slotId: slot.id, error: error.message })
+    }
+  }
+
+  return {
+    weekStart: weekStartDate,
+    totals: roundNutritionTotals(totals),
+    days,
+  }
+}
+
+function roundNutritionTotals(totals) {
+  return {
+    calories: Math.round(totals.calories),
+    protein: Math.round(totals.protein),
+    carbs: Math.round(totals.carbs),
+    fat: Math.round(totals.fat),
+  }
+}
