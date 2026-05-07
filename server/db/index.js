@@ -250,14 +250,14 @@ export async function getRecipeBySourceUrl(householdId, sourceUrl) {
 export async function createRecipe(recipe) {
   const result = await sql`
     INSERT INTO recipes (id, household_id, title, description, image_url, prep_time, cook_time, servings, tags, ingredients, instructions, source_url, credits, created_by, created_at, updated_at)
-    VALUES (${recipe.id}, ${recipe.householdId}, ${recipe.title}, ${recipe.description || null}, ${recipe.imageUrl || null}, ${recipe.prepTime || null}, ${recipe.cookTime || null}, ${recipe.servings || null}, ${JSON.stringify(recipe.tags || [])}, ${JSON.stringify(recipe.ingredients || [])}, ${JSON.stringify(recipe.instructions || [])}, ${recipe.sourceUrl || null}, ${recipe.credits || null}, ${recipe.createdBy || null}, ${recipe.createdAt}, ${recipe.updatedAt})
+    VALUES (${recipe.id}, ${recipe.householdId}, ${recipe.title}, ${recipe.description || null}, ${recipe.imageUrl || null}, ${recipe.prepTime || null}, ${recipe.cookTime || null}, ${recipe.servings || null}, ${recipe.tags || []}, ${JSON.stringify(recipe.ingredients || [])}, ${recipe.instructions || []}, ${recipe.sourceUrl || null}, ${recipe.credits || null}, ${recipe.createdBy || null}, ${recipe.createdAt}, ${recipe.updatedAt})
     RETURNING *
   `
   return toRecipeObject(result[0])
 }
 
 export async function updateRecipe(id, fields) {
-  const updates = sanitizeUpdates(fields, ['tags', 'ingredients', 'instructions'])
+  const updates = sanitizeUpdates(fields)
   if (Object.keys(updates).length === 0) {
     return await getRecipeById(id)
   }
@@ -505,13 +505,16 @@ function toSnakeCase(str) {
   return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)
 }
 
+// JSONB columns need JSON.stringify; TEXT[] columns take native arrays
+const JSONB_KEYS = new Set(['ingredients', 'healthTargets', 'health_targets'])
+
 function sanitizeUpdates(fields, jsonKeys = []) {
   const result = {}
   for (const [key, value] of Object.entries(fields)) {
     const col = toSnakeCase(key)
     if (value === undefined) {
       result[col] = null
-    } else if (jsonKeys.includes(key) || ['tags', 'ingredients', 'instructions', 'healthTargets'].includes(key)) {
+    } else if (JSONB_KEYS.has(key) || jsonKeys.includes(key)) {
       result[col] = JSON.stringify(value)
     } else {
       result[col] = value
@@ -605,11 +608,22 @@ function toRecipeObject(row) {
   }
 }
 
+function toDateString(value) {
+  if (!value) return value
+  if (value instanceof Date) {
+    const year = value.getUTCFullYear()
+    const month = String(value.getUTCMonth() + 1).padStart(2, '0')
+    const day = String(value.getUTCDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+  return String(value)
+}
+
 function toAssignmentObject(row) {
   return {
     id: row.id,
     householdId: row.household_id,
-    date: row.date,
+    date: toDateString(row.date),
     mealType: row.meal_type,
     recipeId: row.recipe_id,
     notes: row.notes,
@@ -647,7 +661,7 @@ function toPantryItemObject(row) {
     unit: row.unit,
     category: row.category,
     lowStockThreshold: row.low_stock_threshold,
-    expiresAt: row.expires_at,
+    expiresAt: toDateString(row.expires_at),
     updatedAt: row.updated_at,
   }
 }
