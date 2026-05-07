@@ -202,19 +202,25 @@ class SqliteDatabase {
   }
 }
 
-console.log('🔍 Database config:', {
-  supabaseUrlSet: !!config.supabaseUrl,
-  supabaseUrl: config.supabaseUrl ? '***SET***' : 'NOT SET',
-  supabaseKeySet: !!config.supabaseKey,
-})
-
 let db
-if (config.supabaseUrl) {
-  console.log('✅ Using Supabase database')
-  db = new SupabaseDatabase(config.supabaseUrl, config.supabaseKey)
-} else {
-  console.log('⚠️  Using SQLite database (NEXT_PUBLIC_SUPABASE_URL not found)')
-  db = new SqliteDatabase()
+
+try {
+  console.log('🔍 Database initialization starting...')
+  console.log('Config - SUPABASE_URL:', config.supabaseUrl ? 'SET' : 'NOT SET')
+  console.log('Config - SUPABASE_KEY:', config.supabaseKey ? 'SET' : 'NOT SET')
+
+  if (config.supabaseUrl && config.supabaseKey) {
+    console.log('✅ Creating Supabase database...')
+    db = new SupabaseDatabase(config.supabaseUrl, config.supabaseKey)
+    console.log('✅ Supabase database created successfully')
+  } else {
+    console.log('⚠️  Creating SQLite database (Supabase credentials not found)')
+    db = new SqliteDatabase()
+    console.log('✅ SQLite database created successfully')
+  }
+} catch (error) {
+  console.error('❌ Database initialization error:', error.message)
+  throw error
 }
 
 export { db }
