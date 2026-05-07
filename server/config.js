@@ -42,4 +42,6 @@ export const config = {
   usdaApiKey: process.env.USDA_API_KEY || '',
   openrouterApiKey: process.env.OPENROUTER_API_KEY || '',
   openrouterModel: process.env.OPENROUTER_MODEL || 'qwen/qwen3.6-plus:free',
+  supabaseUrl: process.env.SUPABASE_URL || '',
+  supabaseKey: process.env.SUPABASE_SERVICE_KEY || '',
 }

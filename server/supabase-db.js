@@ -1,130 +1,98 @@
-import { existsSync, mkdirSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-import Database from 'better-sqlite3'
+import { createClient } from '@supabase/supabase-js'
 import { createSeedData } from './seed.js'
 import { normalizeHealthTargets, normalizeMealPeriods } from './utils.js'
 import { logger } from './logger.js'
-import { config } from './config.js'
-import { SupabaseDatabase } from './supabase-db.js'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const dataDirectory = path.join(__dirname, 'data')
-const dbFile = path.join(dataDirectory, 'mealsync.db')
-const legacyJsonFile = path.join(dataDirectory, 'db.json')
 
 const MAX_CACHE_ENTRIES = 200
 const MAX_CACHE_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 const SESSION_CLEANUP_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
 
-// Each collection is stored as a single JSON row keyed by name.
-// This gives us ACID writes and file locking from SQLite while keeping
-// the same in-memory data model the rest of the codebase uses.
 const COLLECTIONS = [
   'users', 'households', 'householdMembers', 'invites',
   'householdPreferences', 'recipes', 'mealAssignments',
   'shoppingItems', 'pantryItems', 'recipeReviews', 'sessions', 'meta',
 ]
 
-class SqliteDatabase {
+export class SupabaseDatabase {
   data = null
-  #sqlite = null
-  #saveStmt = null
+  #supabase = null
   #cleanupTimer = null
 
   /** @type {Map<string, object>} Token → session for O(1) auth lookups */
   sessionIndex = new Map()
 
+  constructor(supabaseUrl, supabaseKey) {
+    this.#supabase = createClient(supabaseUrl, supabaseKey)
+  }
+
   async load() {
-    mkdirSync(dataDirectory, { recursive: true })
+    try {
+      const { data: rows, error } = await this.#supabase
+        .from('collections')
+        .select('name, data')
 
-    this.#sqlite = new Database(dbFile)
+      if (error) {
+        logger.error('Failed to load from Supabase', { error: error.message })
+        throw error
+      }
 
-    // Enable WAL mode for better concurrent read performance
-    this.#sqlite.pragma('journal_mode = WAL')
-    this.#sqlite.pragma('busy_timeout = 5000')
-
-    // Create the collections table if it doesn't exist
-    this.#sqlite.exec(`
-      CREATE TABLE IF NOT EXISTS collections (
-        name TEXT PRIMARY KEY,
-        data TEXT NOT NULL
-      )
-    `)
-
-    this.#saveStmt = this.#sqlite.prepare(
-      'INSERT OR REPLACE INTO collections (name, data) VALUES (?, ?)'
-    )
-
-    // Try to load from SQLite first
-    const existing = this.#loadFromSqlite()
-
-    if (existing) {
-      this.data = normalizeData(existing)
-    } else {
-      // Try to migrate from legacy db.json
-      const migrated = await this.#migrateFromJson()
-      if (migrated) {
-        this.data = normalizeData(migrated)
-        logger.info('Migrated data from db.json to SQLite')
+      if (rows && rows.length > 0) {
+        const result = {}
+        for (const row of rows) {
+          try {
+            result[row.name] = JSON.parse(row.data)
+          } catch {
+            result[row.name] = row.name === 'meta' ? {} : []
+          }
+        }
+        this.data = normalizeData(result)
       } else {
         this.data = createSeedData()
+        await this.#saveAllToSupabase()
       }
-      this.#saveAllToSqlite()
-    }
 
-    this.#cleanupExpiredSessions()
-    this.#evictStaleCaches()
-    this.#rebuildSessionIndex()
-
-    this.#cleanupTimer = setInterval(() => {
       this.#cleanupExpiredSessions()
+      this.#evictStaleCaches()
       this.#rebuildSessionIndex()
-      this.save()
-    }, SESSION_CLEANUP_INTERVAL_MS)
-    this.#cleanupTimer.unref()
 
-    return this.data
-  }
+      this.#cleanupTimer = setInterval(() => {
+        this.#cleanupExpiredSessions()
+        this.#rebuildSessionIndex()
+        this.save()
+      }, SESSION_CLEANUP_INTERVAL_MS)
+      this.#cleanupTimer.unref()
 
-  #loadFromSqlite() {
-    const row = this.#sqlite.prepare('SELECT COUNT(*) as count FROM collections').get()
-    if (row.count === 0) return null
-
-    const result = {}
-    const rows = this.#sqlite.prepare('SELECT name, data FROM collections').all()
-    for (const row of rows) {
-      try {
-        result[row.name] = JSON.parse(row.data)
-      } catch {
-        result[row.name] = row.name === 'meta' ? {} : []
-      }
-    }
-
-    return result
-  }
-
-  async #migrateFromJson() {
-    if (!existsSync(legacyJsonFile)) return null
-
-    try {
-      const raw = await readFile(legacyJsonFile, 'utf8')
-      return JSON.parse(raw)
-    } catch {
-      return null
+      logger.info('Connected to Supabase database')
+      return this.data
+    } catch (error) {
+      logger.error('Failed to load Supabase database', { error: error.message })
+      throw error
     }
   }
 
-  #saveAllToSqlite() {
-    const saveAll = this.#sqlite.transaction(() => {
-      for (const name of COLLECTIONS) {
-        const value = name === 'meta' ? this.data.meta : this.data[name]
-        this.#saveStmt.run(name, JSON.stringify(value || (name === 'meta' ? {} : [])))
+  async #saveAllToSupabase() {
+    const operations = []
+    for (const name of COLLECTIONS) {
+      const value = name === 'meta' ? this.data.meta : this.data[name]
+      operations.push({
+        name,
+        data: JSON.stringify(value || (name === 'meta' ? {} : [])),
+      })
+    }
+
+    for (const op of operations) {
+      const { error } = await this.#supabase
+        .from('collections')
+        .upsert({ name: op.name, data: op.data }, { onConflict: 'name' })
+
+      if (error) {
+        logger.error('Failed to save collection to Supabase', {
+          collection: op.name,
+          error: error.message,
+        })
+        throw error
       }
-    })
-    saveAll()
+    }
   }
 
   #rebuildSessionIndex() {
@@ -140,7 +108,7 @@ class SqliteDatabase {
     }
 
     try {
-      this.#saveAllToSqlite()
+      await this.#saveAllToSupabase()
     } catch (error) {
       logger.error('Database write failed', { error: error.message })
     }
@@ -148,7 +116,6 @@ class SqliteDatabase {
 
   close() {
     if (this.#cleanupTimer) clearInterval(this.#cleanupTimer)
-    if (this.#sqlite) this.#sqlite.close()
   }
 
   #cleanupExpiredSessions() {
@@ -201,10 +168,6 @@ class SqliteDatabase {
     }
   }
 }
-
-export const db = config.supabaseUrl
-  ? new SupabaseDatabase(config.supabaseUrl, config.supabaseKey)
-  : new SqliteDatabase()
 
 function normalizeData(data) {
   return {
