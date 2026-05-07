@@ -320,7 +320,7 @@ export async function getRecipeAiAsk(recipe, question) {
 // ── Meal planning helpers ───────────────────────────────────────
 
 export async function getMealSlotsForWeek(householdId, startDate) {
-  const endDate = toDateKey(addDays(parseDateKey(startDate), 7))
+  const endDate = addDays(startDate, 7)
   const assignments = await db.getAssignmentsByWeek(householdId, startDate, endDate)
   const recipes = await db.getRecipesByHousehold(householdId)
   const recipeMap = new Map(recipes.map(r => [r.id, r]))
@@ -342,7 +342,7 @@ export async function getMealSlotsForWeek(householdId, startDate) {
 }
 
 export async function applyRecurringMealsForWeek(householdId, startDate) {
-  const endDate = toDateKey(addDays(parseDateKey(startDate), 7))
+  const endDate = addDays(startDate, 7)
   const assignments = await db.getAssignmentsByHousehold(householdId)
 
   const recurringByRecurrence = new Map()
@@ -360,7 +360,7 @@ export async function applyRecurringMealsForWeek(householdId, startDate) {
   const toCreate = []
   for (const [, template] of recurringByRecurrence) {
     for (let offset = 0; offset < 7; offset++) {
-      const date = toDateKey(addDays(parseDateKey(startDate), offset))
+      const date = addDays(startDate, offset)
       const dayOfWeek = new Date(date).getDay()
       const templateDayOfWeek = new Date(template.date).getDay()
 
@@ -390,18 +390,18 @@ export async function applyRecurringMealsForWeek(householdId, startDate) {
 }
 
 export async function copyWeekPlan(householdId, sourceStartDate, targetStartDate) {
-  const sourceEndDate = toDateKey(addDays(parseDateKey(sourceStartDate), 7))
+  const sourceEndDate = addDays(sourceStartDate, 7)
   const sourceAssignments = await db.getAssignmentsByWeek(householdId, sourceStartDate, sourceEndDate)
 
-  const targetEndDate = toDateKey(addDays(parseDateKey(targetStartDate), 7))
+  const targetEndDate = addDays(targetStartDate, 7)
   const targetAssignments = await db.getAssignmentsByWeek(householdId, targetStartDate, targetEndDate)
   const targetKeys = new Set(targetAssignments.map(a => `${a.date}:${a.mealType}`))
 
-  const dayOffset = parseDateKey(targetStartDate) - parseDateKey(sourceStartDate)
+  const dayOffset = Math.round((parseDateKey(targetStartDate) - parseDateKey(sourceStartDate)) / 86400000)
   const toCreate = []
 
   for (const assignment of sourceAssignments) {
-    const newDate = toDateKey(addDays(parseDateKey(assignment.date), dayOffset))
+    const newDate = addDays(assignment.date, dayOffset)
     const key = `${newDate}:${assignment.mealType}`
 
     if (!targetKeys.has(key)) {
