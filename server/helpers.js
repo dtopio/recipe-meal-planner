@@ -267,7 +267,7 @@ export async function getRecipeNutrition(recipe) {
 
   const cacheKey = getRecipeCacheKey(recipe)
   const cached = await db.getMetaValue('nutritionCache:' + cacheKey)
-  if (cached) {
+  if (cached && cached.perServing && cached.total) {
     return cached
   }
 

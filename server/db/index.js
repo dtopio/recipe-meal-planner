@@ -487,7 +487,16 @@ export async function deleteReviewsByUser(userId) {
 
 export async function getMetaValue(key) {
   const result = await sql`SELECT value FROM meta WHERE key = ${key}`
-  return result.length > 0 ? result[0].value : null
+  if (result.length === 0) return null
+  const value = result[0].value
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value)
+    } catch {
+      return value
+    }
+  }
+  return value
 }
 
 export async function setMetaValue(key, value) {
