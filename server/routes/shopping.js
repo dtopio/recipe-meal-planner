@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { db } from '../db.js'
 import { createId, guessShoppingCategory, nowIso, startOfWeek, toDateKey } from '../utils.js'
 import {
   sendOk,
@@ -13,6 +12,7 @@ import {
   filterShoppingItemsByPeriod,
   getShoppingSummary,
 } from '../helpers.js'
+import * as db from '../db/index.js'
 
 const router = Router()
 
@@ -42,29 +42,25 @@ const shoppingGenerationSchema = z.object({
   period: z.enum(['all', 'day', 'week', 'month']).optional(),
 })
 
-router.get('/', requireAuth, requireHousehold, (req, res) => {
-  const all = db.data.shoppingItems
-    .filter(candidate => candidate.householdId === req.householdId)
-    .sort((left, right) => new Date(left.addedAt).getTime() - new Date(right.addedAt).getTime())
+router.get('/', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
+  const all = await db.getShoppingItems(req.householdId)
+  const sorted = all.sort((left, right) => new Date(left.addedAt).getTime() - new Date(right.addedAt).getTime())
 
-  sendOk(res, paginate(all, req.query))
-})
+  sendOk(res, paginate(sorted, req.query))
+}))
 
 router.post('/', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
   const dto = addShoppingItemSchema.parse(req.body)
-  const existing = db.data.shoppingItems.find(candidate => (
-    candidate.householdId === req.householdId &&
-    !candidate.checked &&
-    candidate.name.toLowerCase() === dto.name.toLowerCase() &&
-    candidate.unit.toLowerCase() === dto.unit.toLowerCase()
-  ))
+  const existing = await db.findShoppingItem(req.householdId, dto.name, dto.unit)
 
-  if (existing) {
-    existing.quantity += dto.quantity
-    existing.category = dto.category
-    existing.syncStatus = 'synced'
-    await db.save()
-    return sendOk(res, existing, 'Shopping item updated')
+  if (existing && !existing.checked) {
+    await db.updateShoppingItem(existing.id, {
+      quantity: existing.quantity + dto.quantity,
+      category: dto.category,
+      syncStatus: 'synced',
+    })
+    const updated = await db.getShoppingItemById(existing.id)
+    return sendOk(res, updated, 'Shopping item updated')
   }
 
   const item = {
@@ -80,24 +76,17 @@ router.post('/', requireAuth, requireHousehold, asyncHandler(async (req, res) =>
     syncStatus: 'synced',
   }
 
-  db.data.shoppingItems.push(item)
-  await db.save()
+  await db.createShoppingItem(item)
   sendOk(res, item, 'Shopping item added')
 }))
 
 router.post('/generate', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
   const dto = shoppingGenerationSchema.parse(req.body || {})
   const weekStart = dto.weekStart || toDateKey(startOfWeek())
-  const summary = buildShoppingGeneration(req.householdId, weekStart)
+  const summary = await buildShoppingGeneration(req.householdId, weekStart)
 
-  db.data.shoppingItems = db.data.shoppingItems.filter(candidate => !(
-    candidate.householdId === req.householdId &&
-    candidate.generated &&
-    candidate.sourceWeekStart === weekStart
-  ))
-
-  db.data.shoppingItems.push(...summary.generatedItems)
-  await db.save()
+  await db.deleteGeneratedItemsByWeek(req.householdId, weekStart)
+  await db.createShoppingItems(summary.generatedItems)
 
   sendOk(res, {
     ...summary,
@@ -119,52 +108,48 @@ router.post('/summary', requireAuth, requireHousehold, asyncHandler(async (req, 
 
 router.patch('/:itemId', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
   const dto = updateShoppingItemSchema.parse(req.body)
-  const item = db.data.shoppingItems.find(candidate => (
-    candidate.id === req.params.itemId &&
-    candidate.householdId === req.householdId
-  ))
+  const item = await db.getShoppingItemById(req.params.itemId)
 
-  if (!item) {
+  if (!item || item.householdId !== req.householdId) {
     return sendError(res, 404, 'Shopping item not found', 'SHOPPING_ITEM_NOT_FOUND')
   }
 
-  item.checked = dto.checked
-  item.syncStatus = 'synced'
-  await db.save()
-  sendOk(res, item, 'Shopping item updated')
+  await db.updateShoppingItem(req.params.itemId, {
+    checked: dto.checked,
+    syncStatus: 'synced',
+  })
+  const updated = await db.getShoppingItemById(req.params.itemId)
+  sendOk(res, updated, 'Shopping item updated')
 }))
 
 router.delete('/checked', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
   const dto = shoppingGenerationSchema.parse(req.body || {})
   const period = dto.period || 'all'
   const weekStart = dto.weekStart || toDateKey(startOfWeek())
-  const checkedIds = new Set(
-    filterShoppingItemsByPeriod(
-      db.data.shoppingItems.filter(candidate => candidate.householdId === req.householdId && candidate.checked),
-      period,
-      weekStart,
-    ).map(item => item.id)
-  )
 
-  db.data.shoppingItems = db.data.shoppingItems.filter(candidate => !checkedIds.has(candidate.id))
+  const allItems = await db.getShoppingItems(req.householdId)
+  const checkedItems = allItems.filter(item => item.checked)
+  const filtered = filterShoppingItemsByPeriod(checkedItems, period, weekStart)
+  const checkedIds = filtered.map(item => item.id)
 
-  await db.save()
+  await db.deleteCheckedItems(req.householdId, checkedIds)
+
   sendOk(res, true, 'Completed shopping items cleared')
 }))
 
 router.delete('/', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
-  db.data.shoppingItems = db.data.shoppingItems.filter(candidate => candidate.householdId !== req.householdId)
-  await db.save()
+  await db.deleteShoppingItemsByHousehold(req.householdId)
   sendOk(res, true, 'Shopping list cleared')
 }))
 
 router.delete('/:itemId', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
-  db.data.shoppingItems = db.data.shoppingItems.filter(candidate => !(
-    candidate.id === req.params.itemId &&
-    candidate.householdId === req.householdId
-  ))
+  const item = await db.getShoppingItemById(req.params.itemId)
 
-  await db.save()
+  if (!item || item.householdId !== req.householdId) {
+    return sendError(res, 404, 'Shopping item not found', 'SHOPPING_ITEM_NOT_FOUND')
+  }
+
+  await db.deleteShoppingItem(req.params.itemId)
   sendOk(res, true, 'Shopping item removed')
 }))
 
@@ -173,19 +158,17 @@ router.post('/recipe-ingredients', requireAuth, requireHousehold, asyncHandler(a
   const addedItems = []
 
   for (const ingredient of dto.ingredients) {
-    const existing = db.data.shoppingItems.find(candidate => (
-      candidate.householdId === req.householdId &&
-      !candidate.checked &&
-      candidate.name.toLowerCase() === ingredient.name.toLowerCase() &&
-      candidate.unit.toLowerCase() === ingredient.unit.toLowerCase()
-    ))
+    const existing = await db.findShoppingItem(req.householdId, ingredient.name, ingredient.unit)
 
-    if (existing) {
-      existing.quantity += ingredient.quantity
-      existing.syncStatus = 'synced'
-      existing.sourceRecipeId = existing.sourceRecipeId || dto.recipeId
-      existing.sourceRecipeName = existing.sourceRecipeName || dto.recipeName
-      addedItems.push(existing)
+    if (existing && !existing.checked) {
+      await db.updateShoppingItem(existing.id, {
+        quantity: existing.quantity + ingredient.quantity,
+        syncStatus: 'synced',
+        sourceRecipeId: existing.sourceRecipeId || dto.recipeId,
+        sourceRecipeName: existing.sourceRecipeName || dto.recipeName,
+      })
+      const updated = await db.getShoppingItemById(existing.id)
+      addedItems.push(updated)
       continue
     }
 
@@ -204,11 +187,10 @@ router.post('/recipe-ingredients', requireAuth, requireHousehold, asyncHandler(a
       syncStatus: 'synced',
     }
 
-    db.data.shoppingItems.push(item)
+    await db.createShoppingItem(item)
     addedItems.push(item)
   }
 
-  await db.save()
   sendOk(res, addedItems, 'Recipe ingredients added')
 }))
 

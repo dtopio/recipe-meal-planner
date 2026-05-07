@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { db } from '../db.js'
 import { createId, createInviteCode, nowIso, normalizeMealPeriods } from '../utils.js'
 import {
   sendOk,
@@ -12,6 +11,7 @@ import {
   getHouseholdBundle,
   getHouseholdPreferences,
 } from '../helpers.js'
+import * as db from '../db/index.js'
 
 const router = Router()
 
@@ -36,14 +36,14 @@ const preferencesSchema = z.object({
   mealPeriods: z.array(z.string().trim().min(2).max(24)).min(1).max(8),
 })
 
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, asyncHandler(async (req, res) => {
   const householdId = req.auth.user.currentHouseholdId
   if (!householdId) {
     return sendOk(res, { household: null, members: [], invite: null, preferences: null })
   }
 
-  sendOk(res, getHouseholdBundle(householdId))
-})
+  sendOk(res, await getHouseholdBundle(householdId))
+}))
 
 router.post('/', requireAuth, asyncHandler(async (req, res) => {
   const dto = createHouseholdSchema.parse(req.body)
@@ -77,14 +77,13 @@ router.post('/', requireAuth, asyncHandler(async (req, res) => {
     createdBy: req.auth.user.id,
   }
 
-  req.auth.user.currentHouseholdId = household.id
-  db.data.households.push(household)
-  db.data.householdMembers.push(member)
-  db.data.invites = db.data.invites.filter(candidate => candidate.householdId !== household.id)
-  db.data.invites.push(invite)
+  await db.createHousehold(household)
+  await db.createMember(member)
+  await db.deleteInviteByHousehold(household.id)
+  await db.createInvite(invite)
+  await db.updateUser(req.auth.user.id, { currentHouseholdId: household.id })
 
-  await db.save()
-  sendOk(res, getHouseholdBundle(household.id), 'Household created')
+  sendOk(res, await getHouseholdBundle(household.id), 'Household created')
 }))
 
 router.post('/join', requireAuth, asyncHandler(async (req, res) => {
@@ -94,17 +93,15 @@ router.post('/join', requireAuth, asyncHandler(async (req, res) => {
     return sendError(res, 409, 'Leave your current household before joining a new one', 'ALREADY_IN_HOUSEHOLD')
   }
 
-  const invite = db.data.invites.find(candidate => candidate.code.toUpperCase() === dto.inviteCode.toUpperCase())
+  const invite = await db.getInviteByCode(dto.inviteCode)
   if (!invite || new Date(invite.expiresAt).getTime() <= Date.now()) {
     return sendError(res, 404, 'That invite code is invalid or has expired', 'INVALID_INVITE')
   }
 
-  const existingMember = db.data.householdMembers.find(candidate => (
-    candidate.householdId === invite.householdId && candidate.userId === req.auth.user.id
-  ))
+  const existingMember = await db.getMemberByUserAndHousehold(req.auth.user.id, invite.householdId)
 
   if (!existingMember) {
-    db.data.householdMembers.push({
+    await db.createMember({
       id: createId('member'),
       userId: req.auth.user.id,
       householdId: invite.householdId,
@@ -115,21 +112,18 @@ router.post('/join', requireAuth, asyncHandler(async (req, res) => {
     })
   }
 
-  req.auth.user.currentHouseholdId = invite.householdId
-  await db.save()
-  sendOk(res, getHouseholdBundle(invite.householdId), 'Joined household')
+  await db.updateUser(req.auth.user.id, { currentHouseholdId: invite.householdId })
+  sendOk(res, await getHouseholdBundle(invite.householdId), 'Joined household')
 }))
 
 router.post('/invite/regenerate', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
-  const currentMember = db.data.householdMembers.find(candidate => (
-    candidate.householdId === req.householdId && candidate.userId === req.auth.user.id
-  ))
+  const currentMember = await db.getMemberByUserAndHousehold(req.auth.user.id, req.householdId)
 
   if (!currentMember || currentMember.role !== 'admin') {
     return sendError(res, 403, 'Only household admins can regenerate invite codes', 'FORBIDDEN')
   }
 
-  const household = db.data.households.find(candidate => candidate.id === req.householdId)
+  const household = await db.getHouseholdById(req.householdId)
   const invite = {
     code: createInviteCode(household?.name || 'Household'),
     householdId: req.householdId,
@@ -137,9 +131,8 @@ router.post('/invite/regenerate', requireAuth, requireHousehold, asyncHandler(as
     createdBy: req.auth.user.id,
   }
 
-  db.data.invites = db.data.invites.filter(candidate => candidate.householdId !== req.householdId)
-  db.data.invites.push(invite)
-  await db.save()
+  await db.deleteInviteByHousehold(req.householdId)
+  await db.createInvite(invite)
   sendOk(res, invite, 'Invite code regenerated')
 }))
 
@@ -152,18 +145,14 @@ const updateRoleSchema = z.object({
 router.patch('/members/:memberId/role', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
   const dto = updateRoleSchema.parse(req.body)
 
-  // Only admins can change roles
-  const currentMember = db.data.householdMembers.find(candidate => (
-    candidate.householdId === req.householdId && candidate.userId === req.auth.user.id
-  ))
+  const currentMember = await db.getMemberByUserAndHousehold(req.auth.user.id, req.householdId)
 
   if (!currentMember || currentMember.role !== 'admin') {
     return sendError(res, 403, 'Only household admins can change member roles', 'FORBIDDEN')
   }
 
-  const targetMember = db.data.householdMembers.find(candidate => (
-    candidate.id === req.params.memberId && candidate.householdId === req.householdId
-  ))
+  const members = await db.getMembersByHousehold(req.householdId)
+  const targetMember = members.find(candidate => candidate.id === req.params.memberId)
 
   if (!targetMember) {
     return sendError(res, 404, 'Member not found', 'MEMBER_NOT_FOUND')
@@ -171,28 +160,27 @@ router.patch('/members/:memberId/role', requireAuth, requireHousehold, asyncHand
 
   // Prevent demoting yourself if you're the last admin
   if (dto.role === 'member' && targetMember.userId === req.auth.user.id) {
-    const adminCount = db.data.householdMembers.filter(candidate => (
-      candidate.householdId === req.householdId && candidate.role === 'admin'
-    )).length
+    const adminCount = members.filter(candidate => candidate.role === 'admin').length
 
     if (adminCount <= 1) {
       return sendError(res, 400, 'Cannot demote yourself when you are the only admin. Promote another member first.', 'LAST_ADMIN')
     }
   }
 
-  targetMember.role = dto.role
-  await db.save()
-  sendOk(res, getHouseholdBundle(req.householdId), `${targetMember.displayName} is now ${dto.role === 'admin' ? 'an admin' : 'a member'}`)
+  await db.updateMember(req.params.memberId, { role: dto.role })
+  sendOk(res, await getHouseholdBundle(req.householdId), `${targetMember.displayName} is now ${dto.role === 'admin' ? 'an admin' : 'a member'}`)
 }))
 
 router.patch('/preferences', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
   const dto = preferencesSchema.parse(req.body)
-  const preferences = getHouseholdPreferences(req.householdId)
 
-  preferences.dietaryPreferences = dto.dietaryPreferences
-  preferences.mealPeriods = normalizeMealPeriods(dto.mealPeriods)
-  await db.save()
-  sendOk(res, preferences, 'Household preferences updated')
+  const preferences = {
+    dietaryPreferences: dto.dietaryPreferences,
+    mealPeriods: normalizeMealPeriods(dto.mealPeriods),
+  }
+
+  await db.upsertPreferences(req.householdId, preferences)
+  sendOk(res, await getHouseholdPreferences(req.householdId), 'Household preferences updated')
 }))
 
 // ── Update household (rename / color) ───────────────────────────
@@ -200,40 +188,36 @@ router.patch('/preferences', requireAuth, requireHousehold, asyncHandler(async (
 router.patch('/', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
   const dto = updateHouseholdSchema.parse(req.body)
 
-  const currentMember = db.data.householdMembers.find(candidate => (
-    candidate.householdId === req.householdId && candidate.userId === req.auth.user.id
-  ))
+  const currentMember = await db.getMemberByUserAndHousehold(req.auth.user.id, req.householdId)
 
   if (!currentMember || currentMember.role !== 'admin') {
     return sendError(res, 403, 'Only household admins can update the household', 'FORBIDDEN')
   }
 
-  const household = db.data.households.find(candidate => candidate.id === req.householdId)
+  const household = await db.getHouseholdById(req.householdId)
   if (!household) {
     return sendError(res, 404, 'Household not found', 'NOT_FOUND')
   }
 
-  if (dto.name !== undefined) household.name = dto.name
-  if (dto.color !== undefined) household.color = dto.color
+  const updates = {}
+  if (dto.name !== undefined) updates.name = dto.name
+  if (dto.color !== undefined) updates.color = dto.color
 
-  await db.save()
-  sendOk(res, getHouseholdBundle(req.householdId), 'Household updated')
+  await db.updateHousehold(req.householdId, updates)
+  sendOk(res, await getHouseholdBundle(req.householdId), 'Household updated')
 }))
 
 // ── Kick member ─────────────────────────────────────────────────
 
 router.delete('/members/:memberId', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
-  const currentMember = db.data.householdMembers.find(candidate => (
-    candidate.householdId === req.householdId && candidate.userId === req.auth.user.id
-  ))
+  const currentMember = await db.getMemberByUserAndHousehold(req.auth.user.id, req.householdId)
 
   if (!currentMember || currentMember.role !== 'admin') {
     return sendError(res, 403, 'Only household admins can remove members', 'FORBIDDEN')
   }
 
-  const targetMember = db.data.householdMembers.find(candidate => (
-    candidate.id === req.params.memberId && candidate.householdId === req.householdId
-  ))
+  const members = await db.getMembersByHousehold(req.householdId)
+  const targetMember = members.find(candidate => candidate.id === req.params.memberId)
 
   if (!targetMember) {
     return sendError(res, 404, 'Member not found', 'MEMBER_NOT_FOUND')
@@ -244,25 +228,20 @@ router.delete('/members/:memberId', requireAuth, requireHousehold, asyncHandler(
     return sendError(res, 400, 'You cannot remove yourself. Use the leave option instead.', 'CANNOT_KICK_SELF')
   }
 
-  // Remove membership
-  db.data.householdMembers = db.data.householdMembers.filter(candidate => candidate.id !== targetMember.id)
+  await db.deleteMember(req.params.memberId)
 
-  // Clear the kicked user's currentHouseholdId
-  const kickedUser = db.data.users.find(candidate => candidate.id === targetMember.userId)
+  const kickedUser = await db.getUserById(targetMember.userId)
   if (kickedUser && kickedUser.currentHouseholdId === req.householdId) {
-    kickedUser.currentHouseholdId = undefined
+    await db.updateUser(targetMember.userId, { currentHouseholdId: undefined })
   }
 
-  await db.save()
-  sendOk(res, getHouseholdBundle(req.householdId), `${targetMember.displayName} has been removed`)
+  sendOk(res, await getHouseholdBundle(req.householdId), `${targetMember.displayName} has been removed`)
 }))
 
 // ── Delete household ────────────────────────────────────────────
 
 router.delete('/', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
-  const currentMember = db.data.householdMembers.find(candidate => (
-    candidate.householdId === req.householdId && candidate.userId === req.auth.user.id
-  ))
+  const currentMember = await db.getMemberByUserAndHousehold(req.auth.user.id, req.householdId)
 
   if (!currentMember || currentMember.role !== 'admin') {
     return sendError(res, 403, 'Only household admins can delete the household', 'FORBIDDEN')
@@ -270,27 +249,15 @@ router.delete('/', requireAuth, requireHousehold, asyncHandler(async (req, res) 
 
   const householdId = req.householdId
 
-  // Clear currentHouseholdId for all members
-  const memberUserIds = db.data.householdMembers
-    .filter(m => m.householdId === householdId)
-    .map(m => m.userId)
-
-  for (const userId of memberUserIds) {
-    const user = db.data.users.find(u => u.id === userId)
-    if (user) user.currentHouseholdId = undefined
+  const members = await db.getMembersByHousehold(householdId)
+  for (const member of members) {
+    const user = await db.getUserById(member.userId)
+    if (user && user.currentHouseholdId === householdId) {
+      await db.updateUser(member.userId, { currentHouseholdId: undefined })
+    }
   }
 
-  // Cascade delete all household data
-  db.data.households = db.data.households.filter(h => h.id !== householdId)
-  db.data.householdMembers = db.data.householdMembers.filter(m => m.householdId !== householdId)
-  db.data.invites = db.data.invites.filter(i => i.householdId !== householdId)
-  db.data.householdPreferences = db.data.householdPreferences.filter(p => p.householdId !== householdId)
-  db.data.recipes = db.data.recipes.filter(r => r.householdId !== householdId)
-  db.data.mealAssignments = db.data.mealAssignments.filter(m => m.householdId !== householdId)
-  db.data.shoppingItems = db.data.shoppingItems.filter(s => s.householdId !== householdId)
-  db.data.pantryItems = db.data.pantryItems.filter(p => p.householdId !== householdId)
-
-  await db.save()
+  await db.deleteHousehold(householdId)
   sendOk(res, true, 'Household deleted')
 }))
 
@@ -300,30 +267,22 @@ router.post('/leave', requireAuth, asyncHandler(async (req, res) => {
     return sendOk(res, true)
   }
 
-  const currentMember = db.data.householdMembers.find(candidate => (
-    candidate.householdId === householdId && candidate.userId === req.auth.user.id
-  ))
+  const currentMember = await db.getMemberByUserAndHousehold(req.auth.user.id, householdId)
 
-  db.data.householdMembers = db.data.householdMembers.filter(candidate => !(
-    candidate.householdId === householdId && candidate.userId === req.auth.user.id
-  ))
-
-  req.auth.user.currentHouseholdId = undefined
-
-  const remainingMembers = db.data.householdMembers.filter(candidate => candidate.householdId === householdId)
-  if (remainingMembers.length === 0) {
-    db.data.households = db.data.households.filter(candidate => candidate.id !== householdId)
-    db.data.invites = db.data.invites.filter(candidate => candidate.householdId !== householdId)
-    db.data.householdPreferences = db.data.householdPreferences.filter(candidate => candidate.householdId !== householdId)
-    db.data.recipes = db.data.recipes.filter(candidate => candidate.householdId !== householdId)
-    db.data.mealAssignments = db.data.mealAssignments.filter(candidate => candidate.householdId !== householdId)
-    db.data.shoppingItems = db.data.shoppingItems.filter(candidate => candidate.householdId !== householdId)
-    db.data.pantryItems = db.data.pantryItems.filter(candidate => candidate.householdId !== householdId)
-  } else if (currentMember?.role === 'admin' && !remainingMembers.some(candidate => candidate.role === 'admin')) {
-    remainingMembers[0].role = 'admin'
+  const memberToDelete = await db.getMemberByUserAndHousehold(req.auth.user.id, householdId)
+  if (memberToDelete) {
+    await db.deleteMember(memberToDelete.id)
   }
 
-  await db.save()
+  await db.updateUser(req.auth.user.id, { currentHouseholdId: undefined })
+
+  const remainingMembers = await db.getMembersByHousehold(householdId)
+  if (remainingMembers.length === 0) {
+    await db.deleteHousehold(householdId)
+  } else if (currentMember?.role === 'admin' && !remainingMembers.some(m => m.role === 'admin')) {
+    await db.updateMember(remainingMembers[0].id, { role: 'admin' })
+  }
+
   sendOk(res, true, 'Left household')
 }))
 

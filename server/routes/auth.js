@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { db } from '../db.js'
 import { hashPassword, verifyPassword } from '../password.js'
 import { authLimiter } from '../rate-limit.js'
 import { createId, nowIso, normalizeHealthTargets, serializeUser, DEFAULT_HEALTH_TARGETS } from '../utils.js'
@@ -12,6 +11,7 @@ import {
   createSession,
   updateHouseholdMemberSnapshots,
 } from '../helpers.js'
+import * as db from '../db/index.js'
 
 const router = Router()
 
@@ -53,7 +53,8 @@ const profileSchema = z.object({
 router.post('/register', authLimiter, asyncHandler(async (req, res) => {
   const dto = registerSchema.parse(req.body)
 
-  if (db.data.users.some(user => user.email.toLowerCase() === dto.email.toLowerCase())) {
+  const existingUser = await db.getUserByEmail(dto.email)
+  if (existingUser) {
     return sendError(res, 409, 'An account with that email already exists', 'EMAIL_EXISTS')
   }
 
@@ -68,22 +69,20 @@ router.post('/register', authLimiter, asyncHandler(async (req, res) => {
     healthTargets: { ...DEFAULT_HEALTH_TARGETS },
   }
 
-  db.data.users.push(user)
+  await db.createUser(user)
   const session = createSession(user)
-  await db.save()
   sendOk(res, session, 'Account created')
 }))
 
 router.post('/login', authLimiter, asyncHandler(async (req, res) => {
   const dto = loginSchema.parse(req.body)
-  const user = db.data.users.find(candidate => candidate.email.toLowerCase() === dto.email.toLowerCase())
+  const user = await db.getUserByEmail(dto.email)
 
   if (!user || !(await verifyPassword(dto.password, user.password))) {
     return sendError(res, 401, 'Invalid email or password', 'INVALID_CREDENTIALS')
   }
 
   const session = createSession(user)
-  await db.save()
   sendOk(res, session, 'Signed in')
 }))
 
@@ -93,18 +92,21 @@ router.get('/me', requireAuth, (req, res) => {
 
 router.patch('/me', requireAuth, asyncHandler(async (req, res) => {
   const dto = profileSchema.parse(req.body)
+  const userId = req.auth.user.id
 
+  const updates = {}
   if (dto.displayName !== undefined) {
-    req.auth.user.displayName = dto.displayName
-    updateHouseholdMemberSnapshots(req.auth.user.id)
+    updates.displayName = dto.displayName
+    await updateHouseholdMemberSnapshots(userId)
   }
 
   if (dto.healthTargets !== undefined) {
-    req.auth.user.healthTargets = normalizeHealthTargets(dto.healthTargets)
+    updates.healthTargets = normalizeHealthTargets(dto.healthTargets)
   }
 
-  await db.save()
-  sendOk(res, serializeUser(req.auth.user), 'Profile updated')
+  await db.updateUser(userId, updates)
+  const updatedUser = await db.getUserById(userId)
+  sendOk(res, serializeUser(updatedUser), 'Profile updated')
 }))
 
 // ── Change password ─────────────────────────────────────────────
@@ -116,15 +118,13 @@ router.post('/change-password', requireAuth, asyncHandler(async (req, res) => {
     return sendError(res, 401, 'Current password is incorrect', 'INVALID_CREDENTIALS')
   }
 
-  req.auth.user.password = await hashPassword(dto.newPassword)
-
-  // Invalidate all other sessions so stolen tokens can't persist
+  const newPassword = await hashPassword(dto.newPassword)
+  const userId = req.auth.user.id
   const currentToken = req.auth.session.accessToken
-  db.data.sessions = db.data.sessions.filter(s => s.accessToken === currentToken)
-  db.sessionIndex.clear()
-  db.sessionIndex.set(currentToken, req.auth.session)
 
-  await db.save()
+  await db.updateUser(userId, { password: newPassword })
+  await db.deleteSessionsForUser(userId, currentToken)
+
   sendOk(res, true, 'Password changed')
 }))
 
@@ -140,45 +140,25 @@ router.post('/delete-account', requireAuth, asyncHandler(async (req, res) => {
   const userId = req.auth.user.id
   const householdId = req.auth.user.currentHouseholdId
 
-  // Clean up household membership
   if (householdId) {
-    db.data.householdMembers = db.data.householdMembers.filter(m => !(
-      m.householdId === householdId && m.userId === userId
-    ))
+    const members = await db.getMembersByHousehold(householdId)
+    const remainingAfterDelete = members.filter(m => m.userId !== userId)
 
-    const remaining = db.data.householdMembers.filter(m => m.householdId === householdId)
-    if (remaining.length === 0) {
-      // Last member — delete entire household data
-      db.data.households = db.data.households.filter(h => h.id !== householdId)
-      db.data.invites = db.data.invites.filter(i => i.householdId !== householdId)
-      db.data.householdPreferences = db.data.householdPreferences.filter(p => p.householdId !== householdId)
-      db.data.recipes = db.data.recipes.filter(r => r.householdId !== householdId)
-      db.data.mealAssignments = db.data.mealAssignments.filter(m => m.householdId !== householdId)
-      db.data.shoppingItems = db.data.shoppingItems.filter(s => s.householdId !== householdId)
-      db.data.pantryItems = db.data.pantryItems.filter(p => p.householdId !== householdId)
-    } else if (!remaining.some(m => m.role === 'admin')) {
-      remaining[0].role = 'admin'
+    if (remainingAfterDelete.length === 0) {
+      await db.deleteHousehold(householdId)
+    } else if (!remainingAfterDelete.some(m => m.role === 'admin')) {
+      const firstMember = remainingAfterDelete[0]
+      await db.updateMember(firstMember.id, { role: 'admin' })
     }
   }
 
-  // Remove user data
-  db.data.users = db.data.users.filter(u => u.id !== userId)
-  db.data.sessions = db.data.sessions.filter(s => s.userId !== userId)
-  db.data.recipeReviews = (db.data.recipeReviews || []).filter(r => r.userId !== userId)
-
-  // Rebuild session index
-  db.sessionIndex.clear()
-  for (const s of db.data.sessions) db.sessionIndex.set(s.accessToken, s)
-
-  await db.save()
+  await db.deleteUser(userId)
   sendOk(res, true, 'Account deleted')
 }))
 
 router.post('/logout', requireAuth, asyncHandler(async (req, res) => {
   const token = req.auth.session.accessToken
-  db.data.sessions = db.data.sessions.filter(candidate => candidate.accessToken !== token)
-  db.sessionIndex.delete(token)
-  await db.save()
+  await db.deleteSession(token)
   sendOk(res, true, 'Signed out')
 }))
 

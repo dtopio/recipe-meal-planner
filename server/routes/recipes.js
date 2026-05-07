@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { db } from '../db.js'
 import { config } from '../config.js'
 import { importRecipeFromUrl } from '../recipe-import.js'
 import { createId, normalizeTags, nowIso } from '../utils.js'
@@ -18,6 +17,7 @@ import {
   getRecipeAiAskResponse,
   clearRecipeCaches,
 } from '../helpers.js'
+import * as db from '../db/index.js'
 
 const router = Router()
 
@@ -52,26 +52,23 @@ const recipeReviewSchema = z.object({
   note: z.string().trim().max(500).optional(),
 })
 
-router.get('/', requireAuth, requireHousehold, (req, res) => {
-  const all = getRecipesForHousehold(req.householdId)
+router.get('/', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
+  const all = await getRecipesForHousehold(req.householdId)
   sendOk(res, paginate(all, req.query))
-})
+}))
 
-router.get('/:recipeId', requireAuth, requireHousehold, (req, res) => {
-  const recipe = db.data.recipes.find(candidate => (
-    candidate.id === req.params.recipeId &&
-    candidate.householdId === req.householdId
-  ))
+router.get('/:recipeId', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
+  const recipe = await db.getRecipeById(req.params.recipeId)
 
-  if (!recipe) {
+  if (!recipe || recipe.householdId !== req.householdId) {
     return sendError(res, 404, 'Recipe not found', 'RECIPE_NOT_FOUND')
   }
 
   sendOk(res, recipe)
-})
+}))
 
 router.get('/:recipeId/nutrition', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
-  const recipe = getRecipeForHousehold(req.householdId, req.params.recipeId)
+  const recipe = await getRecipeForHousehold(req.householdId, req.params.recipeId)
 
   if (!recipe) {
     return sendError(res, 404, 'Recipe not found', 'RECIPE_NOT_FOUND')
@@ -86,7 +83,7 @@ router.get('/:recipeId/nutrition', requireAuth, requireHousehold, asyncHandler(a
 }))
 
 router.post('/:recipeId/summary', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
-  const recipe = getRecipeForHousehold(req.householdId, req.params.recipeId)
+  const recipe = await getRecipeForHousehold(req.householdId, req.params.recipeId)
 
   if (!recipe) {
     return sendError(res, 404, 'Recipe not found', 'RECIPE_NOT_FOUND')
@@ -101,7 +98,7 @@ router.post('/:recipeId/summary', requireAuth, requireHousehold, asyncHandler(as
 }))
 
 router.post('/:recipeId/ask', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
-  const recipe = getRecipeForHousehold(req.householdId, req.params.recipeId)
+  const recipe = await getRecipeForHousehold(req.householdId, req.params.recipeId)
 
   if (!recipe) {
     return sendError(res, 404, 'Recipe not found', 'RECIPE_NOT_FOUND')
@@ -134,36 +131,34 @@ router.post('/', requireAuth, requireHousehold, asyncHandler(async (req, res) =>
     })),
     instructions: dto.instructions.map(step => step.trim()),
     sourceUrl: undefined,
+    credits: undefined,
     createdBy: req.auth.user.id,
     createdAt: timestamp,
     updatedAt: timestamp,
   }
 
-  db.data.recipes.push(recipe)
-  await db.save()
+  await db.createRecipe(recipe)
   sendOk(res, recipe, 'Recipe created')
 }))
 
 router.patch('/:recipeId', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
   const dto = updateRecipeSchema.parse(req.body)
-  const recipe = db.data.recipes.find(candidate => (
-    candidate.id === req.params.recipeId &&
-    candidate.householdId === req.householdId
-  ))
+  const recipe = await db.getRecipeById(req.params.recipeId)
 
-  if (!recipe) {
+  if (!recipe || recipe.householdId !== req.householdId) {
     return sendError(res, 404, 'Recipe not found', 'RECIPE_NOT_FOUND')
   }
 
-  if (dto.title !== undefined) recipe.title = dto.title
-  if (dto.description !== undefined) recipe.description = dto.description
-  if (dto.imageUrl !== undefined) recipe.imageUrl = dto.imageUrl
-  if (dto.prepTime !== undefined) recipe.prepTime = dto.prepTime
-  if (dto.cookTime !== undefined) recipe.cookTime = dto.cookTime
-  if (dto.servings !== undefined) recipe.servings = dto.servings
-  if (dto.tags !== undefined) recipe.tags = normalizeTags(dto.tags)
+  const updates = {}
+  if (dto.title !== undefined) updates.title = dto.title
+  if (dto.description !== undefined) updates.description = dto.description
+  if (dto.imageUrl !== undefined) updates.imageUrl = dto.imageUrl
+  if (dto.prepTime !== undefined) updates.prepTime = dto.prepTime
+  if (dto.cookTime !== undefined) updates.cookTime = dto.cookTime
+  if (dto.servings !== undefined) updates.servings = dto.servings
+  if (dto.tags !== undefined) updates.tags = normalizeTags(dto.tags)
   if (dto.ingredients !== undefined) {
-    recipe.ingredients = dto.ingredients.map(ingredient => ({
+    updates.ingredients = dto.ingredients.map(ingredient => ({
       id: createId('ing'),
       quantity: ingredient.quantity,
       unit: ingredient.unit,
@@ -171,104 +166,92 @@ router.patch('/:recipeId', requireAuth, requireHousehold, asyncHandler(async (re
     }))
   }
   if (dto.instructions !== undefined) {
-    recipe.instructions = dto.instructions.map(step => step.trim())
+    updates.instructions = dto.instructions.map(step => step.trim())
   }
 
-  recipe.updatedAt = nowIso()
-  clearRecipeCaches(recipe.id)
-  await db.save()
-  sendOk(res, recipe, 'Recipe updated')
+  updates.updatedAt = nowIso()
+  await db.updateRecipe(req.params.recipeId, updates)
+  await clearRecipeCaches(recipe.id)
+
+  const updatedRecipe = await db.getRecipeById(req.params.recipeId)
+  sendOk(res, updatedRecipe, 'Recipe updated')
 }))
 
 router.delete('/:recipeId', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
-  const recipe = db.data.recipes.find(candidate => (
-    candidate.id === req.params.recipeId &&
-    candidate.householdId === req.householdId
-  ))
+  const recipe = await db.getRecipeById(req.params.recipeId)
 
-  if (!recipe) {
+  if (!recipe || recipe.householdId !== req.householdId) {
     return sendError(res, 404, 'Recipe not found', 'RECIPE_NOT_FOUND')
   }
 
-  db.data.recipes = db.data.recipes.filter(candidate => candidate.id !== recipe.id)
-  db.data.mealAssignments = db.data.mealAssignments.filter(candidate => candidate.recipeId !== recipe.id)
-  db.data.shoppingItems = db.data.shoppingItems.filter(candidate => candidate.sourceRecipeId !== recipe.id)
-  clearRecipeCaches(recipe.id)
+  await db.deleteRecipe(req.params.recipeId)
+  await clearRecipeCaches(recipe.id)
 
-  await db.save()
   sendOk(res, true, 'Recipe deleted')
 }))
 
 // ── Recipe Reviews (ratings + notes) ────────────────────────────
 
-router.get('/:recipeId/reviews', requireAuth, requireHousehold, (req, res) => {
-  const recipe = getRecipeForHousehold(req.householdId, req.params.recipeId)
+router.get('/:recipeId/reviews', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
+  const recipe = await getRecipeForHousehold(req.householdId, req.params.recipeId)
   if (!recipe) return sendError(res, 404, 'Recipe not found', 'RECIPE_NOT_FOUND')
 
-  const reviews = (db.data.recipeReviews || []).filter(r => r.recipeId === recipe.id)
-  const users = db.data.users
-  const enriched = reviews.map(r => {
-    const user = users.find(u => u.id === r.userId)
+  const reviews = await db.getReviewsByRecipe(recipe.id)
+  const enriched = await Promise.all(reviews.map(async r => {
+    const user = await db.getUserById(r.userId)
     return { ...r, userName: user?.displayName || 'Unknown' }
-  })
+  }))
 
   const avgRating = reviews.length
     ? Math.round((reviews.reduce((s, r) => s + r.rating, 0) / reviews.length) * 10) / 10
     : null
 
   sendOk(res, { reviews: enriched, averageRating: avgRating, totalReviews: reviews.length })
-})
+}))
 
 router.post('/:recipeId/reviews', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
-  const recipe = getRecipeForHousehold(req.householdId, req.params.recipeId)
+  const recipe = await getRecipeForHousehold(req.householdId, req.params.recipeId)
   if (!recipe) return sendError(res, 404, 'Recipe not found', 'RECIPE_NOT_FOUND')
 
   const dto = recipeReviewSchema.parse(req.body)
+  const timestamp = nowIso()
 
-  if (!db.data.recipeReviews) db.data.recipeReviews = []
-
-  // Upsert: one review per user per recipe
-  const existing = db.data.recipeReviews.find(r => r.recipeId === recipe.id && r.userId === req.auth.user.id)
+  const existing = await db.getReviewByUserAndRecipe(req.auth.user.id, recipe.id)
   if (existing) {
-    existing.rating = dto.rating
-    existing.note = dto.note || ''
-    existing.updatedAt = nowIso()
+    await db.updateReview(existing.id, {
+      rating: dto.rating,
+      note: dto.note || '',
+      updatedAt: timestamp,
+    })
   } else {
-    db.data.recipeReviews.push({
+    await db.createReview({
       id: createId('review'),
       recipeId: recipe.id,
       userId: req.auth.user.id,
       rating: dto.rating,
       note: dto.note || '',
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
     })
   }
 
-  await db.save()
-
-  const reviews = db.data.recipeReviews.filter(r => r.recipeId === recipe.id)
+  const reviews = await db.getReviewsByRecipe(recipe.id)
   const avgRating = Math.round((reviews.reduce((s, r) => s + r.rating, 0) / reviews.length) * 10) / 10
 
   sendOk(res, { averageRating: avgRating, totalReviews: reviews.length }, 'Review saved')
 }))
 
 router.delete('/:recipeId/reviews', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
-  const recipe = getRecipeForHousehold(req.householdId, req.params.recipeId)
+  const recipe = await getRecipeForHousehold(req.householdId, req.params.recipeId)
   if (!recipe) return sendError(res, 404, 'Recipe not found', 'RECIPE_NOT_FOUND')
 
-  if (!db.data.recipeReviews) db.data.recipeReviews = []
-  db.data.recipeReviews = db.data.recipeReviews.filter(r => !(r.recipeId === recipe.id && r.userId === req.auth.user.id))
-  await db.save()
+  await db.deleteReview(req.auth.user.id, recipe.id)
   sendOk(res, true, 'Review removed')
 }))
 
 router.post('/import', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
   const dto = importRecipeSchema.parse(req.body)
-  const duplicate = db.data.recipes.find(candidate => (
-    candidate.householdId === req.householdId &&
-    candidate.sourceUrl?.toLowerCase() === dto.url.toLowerCase()
-  ))
+  const duplicate = await db.getRecipeBySourceUrl(req.householdId, dto.url)
 
   if (duplicate) {
     return sendError(
@@ -306,8 +289,7 @@ router.post('/import', requireAuth, requireHousehold, asyncHandler(async (req, r
     updatedAt: timestamp,
   }
 
-  db.data.recipes.push(recipe)
-  await db.save()
+  await db.createRecipe(recipe)
   sendOk(res, recipe, 'Recipe imported')
 }))
 

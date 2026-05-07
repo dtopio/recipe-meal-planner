@@ -10,11 +10,9 @@
     "start": "node server/index.js --production"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.105.3",
     "@vee-validate/zod": "^4.15.1",
     "@vueuse/core": "^14.2.1",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^11.10.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "compression": "^1.8.1",
@@ -24,6 +22,7 @@
     "helmet": "^8.1.0",
     "lucide-vue-next": "^0.577.0",
     "pinia": "^3.0.2",
+    "postgres": "^3.4.9",
     "reka-ui": "^2.9.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss-animate": "^1.0.7",

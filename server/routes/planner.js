@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { db } from '../db.js'
 import { config } from '../config.js'
 import { createId, normalizeMealPeriodName, startOfWeek, toDateKey } from '../utils.js'
 import {
@@ -15,6 +14,7 @@ import {
   getMealSlotsForWeek,
   getWeekNutrition,
 } from '../helpers.js'
+import * as db from '../db/index.js'
 
 const router = Router()
 
@@ -45,19 +45,14 @@ router.get('/', requireAuth, requireHousehold, asyncHandler(async (req, res) => 
   const weekStartDate = typeof req.query.weekStart === 'string' && req.query.weekStart
     ? req.query.weekStart
     : toDateKey(startOfWeek())
-    
-  const recurringSummary = applyRecurringMealsForWeek(req.householdId, weekStartDate)
 
-  if (recurringSummary.createdCount > 0) {
-    await db.save()
-  }
+  const recurringSummary = await applyRecurringMealsForWeek(req.householdId, weekStartDate)
 
-  // THE FIX: Grab ALL slots for the week, not just the recurring summary!
   const allWeekSlots = await getMealSlotsForWeek(req.householdId, weekStartDate)
 
   sendOk(res, {
     weekStart: weekStartDate,
-    slots: allWeekSlots, // Now sending the full array back to Vue
+    slots: allWeekSlots,
   })
 }))
 
@@ -77,33 +72,28 @@ router.get('/nutrition', requireAuth, requireHousehold, asyncHandler(async (req,
 router.post('/copy-last-week', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
   const dto = plannerWeekActionSchema.parse(req.body || {})
   const weekStart = dto.weekStart || toDateKey(startOfWeek())
-  const summary = copyWeekPlan(req.householdId, weekStart)
-  await db.save()
+  const summary = await copyWeekPlan(req.householdId, weekStart)
   sendOk(res, summary, 'Last week copied into planner')
 }))
 
 router.post('/apply-recurring', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
   const dto = plannerWeekActionSchema.parse(req.body || {})
   const weekStart = dto.weekStart || toDateKey(startOfWeek())
-  const summary = applyRecurringMealsForWeek(req.householdId, weekStart)
-  await db.save()
+  const summary = await applyRecurringMealsForWeek(req.householdId, weekStart)
   sendOk(res, summary, 'Recurring meals applied')
 }))
 
 router.put('/slot', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
   const dto = plannerAssignmentSchema.parse(req.body)
-  const preferences = getHouseholdPreferences(req.householdId)
+  const preferences = await getHouseholdPreferences(req.householdId)
 
   if (!preferences.mealPeriods.includes(dto.mealType)) {
     return sendError(res, 400, 'Meal period is not enabled for this household', 'INVALID_MEAL_PERIOD')
   }
 
-  const recipe = db.data.recipes.find(candidate => (
-    candidate.id === dto.recipeId &&
-    candidate.householdId === req.householdId
-  ))
+  const recipe = await db.getRecipeById(dto.recipeId)
 
-  if (!recipe) {
+  if (!recipe || recipe.householdId !== req.householdId) {
     return sendError(res, 404, 'Recipe not found for this household', 'RECIPE_NOT_FOUND')
   }
 
@@ -115,11 +105,11 @@ router.put('/slot', requireAuth, requireHousehold, asyncHandler(async (req, res)
     recipeId: dto.recipeId,
     notes: '',
     servings: recipe.servings,
+    repeatWeekly: false,
   }
 
-  db.data.mealAssignments.push(assignment)
+  await db.createAssignment(assignment)
 
-  await db.save()
   sendOk(res, {
     id: assignment.id,
     date: assignment.date,
@@ -136,13 +126,8 @@ router.put('/slot', requireAuth, requireHousehold, asyncHandler(async (req, res)
 router.delete('/slot', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
   const dto = plannerSchema.omit({ recipeId: true }).parse(req.body)
 
-  db.data.mealAssignments = db.data.mealAssignments.filter(candidate => !(
-    candidate.householdId === req.householdId &&
-    candidate.date === dto.date &&
-    candidate.mealType === dto.mealType
-  ))
+  await db.deleteAssignmentsBySlot(req.householdId, dto.date, dto.mealType)
 
-  await db.save()
   sendOk(res, {
     id: `slot-${dto.date}-${dto.mealType}`,
     date: dto.date,
@@ -155,60 +140,53 @@ router.delete('/slot', requireAuth, requireHousehold, asyncHandler(async (req, r
 
 router.patch('/slot/:slotId', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
   const dto = plannerSlotUpdateSchema.parse(req.body)
-  const assignment = db.data.mealAssignments.find(candidate => (
-    candidate.id === req.params.slotId &&
-    candidate.householdId === req.householdId
-  ))
+  const assignment = await db.getAssignmentById(req.params.slotId)
 
-  if (!assignment) {
+  if (!assignment || assignment.householdId !== req.householdId) {
     return sendError(res, 404, 'Meal assignment not found', 'MEAL_ASSIGNMENT_NOT_FOUND')
   }
 
+  const updates = {}
+
   if (dto.servings !== undefined) {
-    assignment.servings = dto.servings
+    updates.servings = dto.servings
   }
 
   if (dto.repeatWeekly !== undefined) {
-    assignment.repeatWeekly = dto.repeatWeekly
+    updates.repeatWeekly = dto.repeatWeekly
 
     if (dto.repeatWeekly && !assignment.recurrenceId) {
-      assignment.recurrenceId = createId('recur')
+      updates.recurrenceId = createId('recur')
     }
   }
 
-  await db.save()
+  await db.updateAssignment(req.params.slotId, updates)
 
-  const recipe = db.data.recipes.find(candidate => (
-    candidate.id === assignment.recipeId &&
-    candidate.householdId === req.householdId
-  ))
+  const recipe = await db.getRecipeById(assignment.recipeId)
+  const updatedAssignment = await db.getAssignmentById(req.params.slotId)
 
   sendOk(res, {
-    id: assignment.id,
-    date: assignment.date,
-    mealType: assignment.mealType,
-    recipeId: assignment.recipeId,
+    id: updatedAssignment.id,
+    date: updatedAssignment.date,
+    mealType: updatedAssignment.mealType,
+    recipeId: updatedAssignment.recipeId,
     recipe,
-    notes: assignment.notes,
-    servings: assignment.servings,
-    repeatWeekly: Boolean(assignment.repeatWeekly),
-    recurrenceId: assignment.recurrenceId || undefined,
+    notes: updatedAssignment.notes,
+    servings: updatedAssignment.servings,
+    repeatWeekly: Boolean(updatedAssignment.repeatWeekly),
+    recurrenceId: updatedAssignment.recurrenceId || undefined,
   }, dto.servings !== undefined && dto.repeatWeekly === undefined ? 'Meal servings updated' : 'Meal updated')
 }))
 
 router.delete('/slot/:slotId', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
-  const assignment = db.data.mealAssignments.find(candidate => (
-    candidate.id === req.params.slotId &&
-    candidate.householdId === req.householdId
-  ))
+  const assignment = await db.getAssignmentById(req.params.slotId)
 
-  if (!assignment) {
+  if (!assignment || assignment.householdId !== req.householdId) {
     return sendError(res, 404, 'Meal assignment not found', 'MEAL_ASSIGNMENT_NOT_FOUND')
   }
 
-  db.data.mealAssignments = db.data.mealAssignments.filter(candidate => candidate.id !== assignment.id)
+  await db.deleteAssignment(req.params.slotId)
 
-  await db.save()
   sendOk(res, true, 'Meal removed')
 }))
 

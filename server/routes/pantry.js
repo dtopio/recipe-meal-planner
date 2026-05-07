@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { db } from '../db.js'
 import { createId, ingredientMatchKey, nowIso } from '../utils.js'
 import {
   sendOk,
@@ -10,6 +9,7 @@ import {
   requireHousehold,
   paginate,
 } from '../helpers.js'
+import * as db from '../db/index.js'
 
 const router = Router()
 
@@ -24,29 +24,28 @@ const pantryItemSchema = z.object({
 
 const updatePantryItemSchema = pantryItemSchema.partial()
 
-router.get('/', requireAuth, requireHousehold, (req, res) => {
-  const all = db.data.pantryItems
-    .filter(candidate => candidate.householdId === req.householdId)
-    .sort((left, right) => left.name.localeCompare(right.name))
+router.get('/', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
+  const all = await db.getPantryItems(req.householdId)
+  const sorted = all.sort((left, right) => left.name.localeCompare(right.name))
 
-  sendOk(res, paginate(all, req.query))
-})
+  sendOk(res, paginate(sorted, req.query))
+}))
 
 router.post('/', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
   const dto = pantryItemSchema.parse(req.body)
-  const existing = db.data.pantryItems.find(candidate => (
-    candidate.householdId === req.householdId &&
-    ingredientMatchKey(candidate.name, candidate.unit) === ingredientMatchKey(dto.name, dto.unit)
-  ))
+  const existing = await db.findPantryItem(req.householdId, dto.name, dto.unit)
 
   if (existing) {
-    existing.quantity = Number((existing.quantity + dto.quantity).toFixed(2))
-    existing.lowStockThreshold = dto.lowStockThreshold
-    existing.category = dto.category
-    existing.expiresAt = dto.expiresAt || undefined
-    existing.updatedAt = nowIso()
-    await db.save()
-    return sendOk(res, existing, 'Pantry item updated')
+    const newQuantity = Number((existing.quantity + dto.quantity).toFixed(2))
+    await db.updatePantryItem(existing.id, {
+      quantity: newQuantity,
+      lowStockThreshold: dto.lowStockThreshold,
+      category: dto.category,
+      expiresAt: dto.expiresAt || undefined,
+      updatedAt: nowIso(),
+    })
+    const updated = await db.getPantryItemById(existing.id)
+    return sendOk(res, updated, 'Pantry item updated')
   }
 
   const item = {
@@ -61,41 +60,40 @@ router.post('/', requireAuth, requireHousehold, asyncHandler(async (req, res) =>
     updatedAt: nowIso(),
   }
 
-  db.data.pantryItems.push(item)
-  await db.save()
+  await db.createPantryItem(item)
   sendOk(res, item, 'Pantry item added')
 }))
 
 router.patch('/:itemId', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
   const dto = updatePantryItemSchema.parse(req.body)
-  const item = db.data.pantryItems.find(candidate => (
-    candidate.id === req.params.itemId &&
-    candidate.householdId === req.householdId
-  ))
+  const item = await db.getPantryItemById(req.params.itemId)
 
-  if (!item) {
+  if (!item || item.householdId !== req.householdId) {
     return sendError(res, 404, 'Pantry item not found', 'PANTRY_ITEM_NOT_FOUND')
   }
 
-  if (dto.name !== undefined) item.name = dto.name
-  if (dto.quantity !== undefined) item.quantity = dto.quantity
-  if (dto.unit !== undefined) item.unit = dto.unit
-  if (dto.category !== undefined) item.category = dto.category
-  if (dto.lowStockThreshold !== undefined) item.lowStockThreshold = dto.lowStockThreshold
-  if (dto.expiresAt !== undefined) item.expiresAt = dto.expiresAt || undefined
-  item.updatedAt = nowIso()
+  const updates = {}
+  if (dto.name !== undefined) updates.name = dto.name
+  if (dto.quantity !== undefined) updates.quantity = dto.quantity
+  if (dto.unit !== undefined) updates.unit = dto.unit
+  if (dto.category !== undefined) updates.category = dto.category
+  if (dto.lowStockThreshold !== undefined) updates.lowStockThreshold = dto.lowStockThreshold
+  if (dto.expiresAt !== undefined) updates.expiresAt = dto.expiresAt || undefined
+  updates.updatedAt = nowIso()
 
-  await db.save()
-  sendOk(res, item, 'Pantry item updated')
+  await db.updatePantryItem(req.params.itemId, updates)
+  const updated = await db.getPantryItemById(req.params.itemId)
+  sendOk(res, updated, 'Pantry item updated')
 }))
 
 router.delete('/:itemId', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
-  db.data.pantryItems = db.data.pantryItems.filter(candidate => !(
-    candidate.id === req.params.itemId &&
-    candidate.householdId === req.householdId
-  ))
+  const item = await db.getPantryItemById(req.params.itemId)
 
-  await db.save()
+  if (!item || item.householdId !== req.householdId) {
+    return sendError(res, 404, 'Pantry item not found', 'PANTRY_ITEM_NOT_FOUND')
+  }
+
+  await db.deletePantryItem(req.params.itemId)
   sendOk(res, true, 'Pantry item removed')
 }))
 

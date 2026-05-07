@@ -39,9 +39,8 @@ function loadEnvFile(filePath) {
 
 export const config = {
   appUrl: process.env.APP_URL || 'http://localhost:3000',
+  databaseUrl: process.env.DATABASE_URL || '',
   usdaApiKey: process.env.USDA_API_KEY || '',
   openrouterApiKey: process.env.OPENROUTER_API_KEY || '',
   openrouterModel: process.env.OPENROUTER_MODEL || 'qwen/qwen3.6-plus:free',
-  supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
 }

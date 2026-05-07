@@ -6,7 +6,8 @@ import helmet from 'helmet'
 import cors from 'cors'
 import compression from 'compression'
 import { z } from 'zod'
-import { db } from './db.js'
+import { connectDb, closeDb } from './db/index.js'
+import { config } from './config.js'
 import { apiLimiter } from './rate-limit.js'
 import { logger, requestLogger } from './logger.js'
 import { nowIso } from './utils.js'
@@ -112,7 +113,7 @@ app.use((error, req, res, _next) => {
 
 // ── Start ───────────────────────────────────────────────────────
 
-await db.load()
+await connectDb(config.databaseUrl)
 
 if (isProduction) {
   // Static assets with long-term cache (Vite hashes filenames)
@@ -166,8 +167,7 @@ const server = app.listen(port, () => {
 function shutdown(signal) {
   logger.info(`${signal} received — shutting down gracefully`)
   server.close(async () => {
-    await db.save()
-    db.close()
+    await closeDb()
     logger.info('Server closed')
     process.exit(0)
   })

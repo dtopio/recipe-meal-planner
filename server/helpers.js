@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { db } from './db.js'
+import * as db from './db/index.js'
 import { config } from './config.js'
 import { logger } from './logger.js'
 import { estimateRecipeNutrition } from './nutrition.js'
@@ -62,34 +62,35 @@ export function asyncHandler(handler) {
 
 // ── Auth middleware ──────────────────────────────────────────────
 
-export function findCurrentUser(req) {
+export async function findCurrentUser(req) {
   const header = req.headers.authorization || ''
   const token = header.startsWith('Bearer ') ? header.slice(7) : ''
   if (!token) return null
 
-  const session = db.sessionIndex.get(token)
+  const session = await db.getSessionByToken(token)
   if (!session) return null
 
   if (new Date(session.expiresAt).getTime() <= Date.now()) {
-    db.data.sessions = db.data.sessions.filter(candidate => candidate.accessToken !== token)
-    db.sessionIndex.delete(token)
+    await db.deleteSession(token)
     return null
   }
 
-  const user = db.data.users.find(candidate => candidate.id === session.userId)
+  const user = await db.getUserById(session.userId)
   if (!user) return null
 
   return { session, user }
 }
 
 export function requireAuth(req, res, next) {
-  const auth = findCurrentUser(req)
-  if (!auth) {
-    return sendError(res, 401, 'You must be signed in to continue', 'UNAUTHORIZED')
-  }
+  return asyncHandler(async (req, res, next) => {
+    const auth = await findCurrentUser(req)
+    if (!auth) {
+      return sendError(res, 401, 'You must be signed in to continue', 'UNAUTHORIZED')
+    }
 
-  req.auth = auth
-  next()
+    req.auth = auth
+    next()
+  })(req, res, next)
 }
 
 export function requireHousehold(req, res, next) {
@@ -105,42 +106,38 @@ export function requireHousehold(req, res, next) {
 
 const MAX_SESSIONS_PER_USER = 5
 
-export function createSession(user) {
+export async function createSession(user) {
   const accessToken = `token_${randomUUID().replace(/-/g, '')}`
   const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString() // 30 days
 
-  // Cap sessions per user instead of wiping all existing ones
-  const userSessions = db.data.sessions
-    .filter(candidate => candidate.userId === user.id)
-    .sort((a, b) => new Date(a.expiresAt).getTime() - new Date(b.expiresAt).getTime())
+  // Cap sessions per user
+  const userSessions = await db.deleteSessionsForUser(user.id)
+  const sessions = await db.sql`SELECT * FROM sessions WHERE user_id = ${user.id} ORDER BY expires_at ASC`
 
-  if (userSessions.length >= MAX_SESSIONS_PER_USER) {
-    const toRemove = userSessions.slice(0, userSessions.length - MAX_SESSIONS_PER_USER + 1)
-    const removeSet = new Set(toRemove.map(s => s.accessToken))
-    db.data.sessions = db.data.sessions.filter(s => !removeSet.has(s.accessToken))
-    for (const s of toRemove) db.sessionIndex.delete(s.accessToken)
+  if (sessions.length >= MAX_SESSIONS_PER_USER) {
+    const toRemove = sessions.slice(0, sessions.length - MAX_SESSIONS_PER_USER + 1)
+    for (const s of toRemove) {
+      await db.deleteSession(s.accessToken)
+    }
   }
 
-  const session = {
-    userId: user.id,
+  const session = await db.createSession({
     accessToken,
+    userId: user.id,
     expiresAt,
-  }
-
-  db.data.sessions.push(session)
-  db.sessionIndex.set(accessToken, session)
+  })
 
   return {
-    accessToken,
-    expiresAt,
+    accessToken: session.accessToken,
+    expiresAt: session.expiresAt,
     user: serializeUser(user),
   }
 }
 
 // ── Household helpers ───────────────────────────────────────────
 
-export function getHouseholdBundle(householdId) {
-  const household = db.data.households.find(candidate => candidate.id === householdId) || null
+export async function getHouseholdBundle(householdId) {
+  const household = await db.getHouseholdById(householdId)
 
   if (!household) {
     return {
@@ -150,11 +147,10 @@ export function getHouseholdBundle(householdId) {
     }
   }
 
-  const members = db.data.householdMembers
-    .filter(candidate => candidate.householdId === householdId)
-    .sort((left, right) => new Date(left.joinedAt).getTime() - new Date(right.joinedAt).getTime())
+  const members = await db.getMembersByHousehold(householdId)
+  members.sort((left, right) => new Date(left.joinedAt).getTime() - new Date(right.joinedAt).getTime())
 
-  const invite = db.data.invites.find(candidate => candidate.householdId === householdId) || null
+  const invite = await db.getInviteByHousehold(householdId)
 
   return {
     household: {
@@ -163,12 +159,12 @@ export function getHouseholdBundle(householdId) {
     },
     members,
     invite,
-    preferences: getHouseholdPreferences(householdId),
+    preferences: await getHouseholdPreferences(householdId),
   }
 }
 
-export function getHouseholdPreferences(householdId) {
-  let preferences = db.data.householdPreferences.find(candidate => candidate.householdId === householdId)
+export async function getHouseholdPreferences(householdId) {
+  let preferences = await db.getPreferences(householdId)
 
   if (!preferences) {
     preferences = {
@@ -176,7 +172,7 @@ export function getHouseholdPreferences(householdId) {
       dietaryPreferences: [],
       mealPeriods: [...DEFAULT_MEAL_PERIODS],
     }
-    db.data.householdPreferences.push(preferences)
+    await db.upsertPreferences(householdId, preferences)
   } else {
     preferences.dietaryPreferences = Array.isArray(preferences.dietaryPreferences) ? preferences.dietaryPreferences : []
     preferences.mealPeriods = normalizeMealPeriods(preferences.mealPeriods)
@@ -185,54 +181,69 @@ export function getHouseholdPreferences(householdId) {
   return preferences
 }
 
-export function updateHouseholdMemberSnapshots(userId) {
-  const user = db.data.users.find(candidate => candidate.id === userId)
+export async function updateHouseholdMemberSnapshots(userId) {
+  const user = await db.getUserById(userId)
   if (!user) return
 
-  db.data.householdMembers = db.data.householdMembers.map(member => (
-    member.userId === userId
-      ? {
-          ...member,
-          displayName: user.displayName,
-          avatarUrl: user.avatarUrl,
-        }
-      : member
-  ))
+  const members = await db.getMembersByHousehold(user.currentHouseholdId || '')
+  for (const member of members) {
+    if (member.userId === userId) {
+      await db.updateMember(member.id, {
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
+      })
+    }
+  }
 }
 
 // ── Recipe helpers ──────────────────────────────────────────────
 
-export function getRecipesForHousehold(householdId) {
-  return sortByCreatedDesc(
-    db.data.recipes.filter(recipe => recipe.householdId === householdId)
-  )
+export async function getRecipesForHousehold(householdId) {
+  const recipes = await db.getRecipesByHousehold(householdId)
+  return sortByCreatedDesc(recipes)
 }
 
-export function getRecipeForHousehold(householdId, recipeId) {
-  return db.data.recipes.find(recipe => recipe.householdId === householdId && recipe.id === recipeId)
+export async function getRecipeForHousehold(householdId, recipeId) {
+  const recipe = await db.getRecipeById(recipeId)
+  return recipe?.householdId === householdId ? recipe : null
 }
 
 export function getRecipeCacheKey(recipe) {
   return `${recipe.id}:${recipe.updatedAt}:${recipe.servings}`
 }
 
-export function clearRecipeCaches(recipeId) {
-  for (const key of Object.keys(db.data.meta.nutritionCache || {})) {
-    if (key.startsWith(`${recipeId}:`)) {
-      delete db.data.meta.nutritionCache[key]
+export async function clearRecipeCaches(recipeId) {
+  const keysToDelete = []
+
+  const nutritionCache = await db.getMetaValue('nutritionCache:' + recipeId)
+  if (nutritionCache) {
+    for (const key of Object.keys(nutritionCache || {})) {
+      if (key.startsWith(`${recipeId}:`)) {
+        keysToDelete.push('nutritionCache:' + key)
+      }
     }
   }
 
-  for (const key of Object.keys(db.data.meta.aiSummaryCache || {})) {
-    if (key.startsWith(`${recipeId}:`)) {
-      delete db.data.meta.aiSummaryCache[key]
+  const aiSummaryCache = await db.getMetaValue('aiSummaryCache:' + recipeId)
+  if (aiSummaryCache) {
+    for (const key of Object.keys(aiSummaryCache || {})) {
+      if (key.startsWith(`${recipeId}:`)) {
+        keysToDelete.push('aiSummaryCache:' + key)
+      }
     }
   }
 
-  for (const key of Object.keys(db.data.meta.aiAskCache || {})) {
-    if (key.startsWith(`${recipeId}:`)) {
-      delete db.data.meta.aiAskCache[key]
+  const aiAskCache = await db.getMetaValue('aiAskCache:' + recipeId)
+  if (aiAskCache) {
+    for (const key of Object.keys(aiAskCache || {})) {
+      if (key.startsWith(`${recipeId}:`)) {
+        keysToDelete.push('aiAskCache:' + key)
+      }
     }
+  }
+
+  if (keysToDelete.length > 0) {
+    await db.deleteMetaKeys(keysToDelete)
   }
 }
 
@@ -266,14 +277,13 @@ export async function getRecipeNutrition(recipe) {
   }
 
   const cacheKey = getRecipeCacheKey(recipe)
-  const cached = db.data.meta.nutritionCache?.[cacheKey]
+  const cached = await db.getMetaValue('nutritionCache:' + cacheKey)
   if (cached) {
     return cached
   }
 
   const nutrition = await estimateRecipeNutrition(recipe)
-  db.data.meta.nutritionCache[cacheKey] = nutrition
-  await db.save()
+  await db.setMetaValue('nutritionCache:' + cacheKey, nutrition)
   return nutrition
 }
 
@@ -285,667 +295,234 @@ export async function getRecipeAiSummary(recipe) {
   }
 
   const cacheKey = `${getRecipeCacheKey(recipe)}:${config.openrouterModel}`
-  const cached = db.data.meta.aiSummaryCache?.[cacheKey]
+  const cached = await db.getMetaValue('aiSummaryCache:' + cacheKey)
   if (cached) {
     return cached
   }
 
   const nutrition = await getRecipeNutrition(recipe)
   const summary = await generateRecipeSummary(recipe, nutrition)
-  db.data.meta.aiSummaryCache[cacheKey] = summary
-  await db.save()
+  await db.setMetaValue('aiSummaryCache:' + cacheKey, summary)
   return summary
 }
 
 function normalizeQuestion(question) {
-  return String(question || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
+  return question.toLowerCase().trim()
 }
 
-function getRecipeAskCacheKey(recipe, question, healthTargets = null) {
-  const targetKey = healthTargets
-    ? `${healthTargets.calories}-${healthTargets.protein}-${healthTargets.carbs}-${healthTargets.fat}`
-    : 'default-targets'
+export async function getRecipeAiAsk(recipe, question) {
+  if (!config.openrouterApiKey) {
+    throw new Error('OpenRouter AI support is not configured')
+  }
 
-  return `${getRecipeCacheKey(recipe)}:${normalizeQuestion(question)}:${targetKey}:${config.openrouterModel || 'default'}`
-}
-
-export function buildFallbackRecipeAskResponse(recipe, question, nutrition = null, healthTargets = null) {
   const normalizedQuestion = normalizeQuestion(question)
-  const totalMinutes = recipe.prepTime + recipe.cookTime
-  const ingredientNames = recipe.ingredients.map(ingredient => ingredient.name.toLowerCase())
-  const tags = recipe.tags.map(tag => tag.toLowerCase())
-  const hasBreakfastSignals = ingredientNames.some(name => /egg|oat|banana|berry|yogurt|toast|bread|pancake|granola/.test(name))
-    || tags.some(tag => /breakfast|brunch|sweet/.test(tag))
-  const hasHeartySignals = ingredientNames.some(name => /beef|pork|cream|cheese|pasta|rice|potato|curry|stew/.test(name))
-    || tags.some(tag => /dinner|comfort|hearty/.test(tag))
-  const hasPrepFriendlySignals = totalMinutes <= 45 && recipe.instructions.length <= 8
-  const perServing = nutrition?.perServing || null
-  const watchouts = []
-  const bestTimes = []
-  const calorieTarget = healthTargets?.calories || DEFAULT_HEALTH_TARGETS.calories
-  const proteinTarget = healthTargets?.protein || DEFAULT_HEALTH_TARGETS.protein
-  let verdict = 'mixed'
-  let headline = 'Practical fit check'
-  let answer = `${recipe.title} can work, but it depends on the meal timing and how much prep you want to do.`
-
-  if (normalizedQuestion.includes('breakfast')) {
-    headline = 'Breakfast fit'
-    if (hasBreakfastSignals && totalMinutes <= 30) {
-      verdict = 'good-fit'
-      answer = `${recipe.title} is a good breakfast option because it fits a lighter morning profile and should not take too long to get on the table.`
-      bestTimes.push('breakfast', 'weekend brunch')
-    } else if (hasHeartySignals || totalMinutes > 45) {
-      verdict = 'not-ideal'
-      answer = `${recipe.title} is probably too heavy or time-consuming for a normal breakfast unless you are planning a slow brunch.`
-      bestTimes.push('brunch', 'dinner')
-      watchouts.push('May feel heavy early in the day')
-    } else {
-      bestTimes.push('breakfast', 'brunch')
-      watchouts.push('Better when you have a bit more morning time')
-    }
-  } else if (normalizedQuestion.includes('lunch')) {
-    headline = 'Lunch fit'
-    if (totalMinutes <= 35) {
-      verdict = 'good-fit'
-      answer = `${recipe.title} fits lunch well because the prep is manageable and the portion size should work for a midday meal.`
-      bestTimes.push('lunch', 'work-from-home lunch')
-    } else {
-      answer = `${recipe.title} can work for lunch, but it is better when you have time for a slower prep or when leftovers are available.`
-      bestTimes.push('lunch', 'weekend lunch')
-      watchouts.push('Not ideal for a rushed midday schedule')
-    }
-  } else if (normalizedQuestion.includes('dinner')) {
-    headline = 'Dinner fit'
-    if (hasHeartySignals || totalMinutes >= 20) {
-      verdict = 'good-fit'
-      answer = `${recipe.title} is a strong dinner option because it has a more substantial profile and suits an evening meal.`
-      bestTimes.push('dinner', 'family dinner')
-    } else {
-      answer = `${recipe.title} can be dinner, but it may feel light unless you pair it with sides or extra portions.`
-      bestTimes.push('light dinner', 'lunch')
-      watchouts.push('May need a side dish for a fuller dinner')
-    }
-  } else if (normalizedQuestion.includes('meal prep') || normalizedQuestion.includes('meal-prep') || normalizedQuestion.includes('leftover')) {
-    headline = 'Meal prep fit'
-    if (hasPrepFriendlySignals && recipe.servings >= 3) {
-      verdict = 'good-fit'
-      answer = `${recipe.title} looks practical for meal prep because the steps are manageable and the recipe already makes multiple servings.`
-      bestTimes.push('meal prep', 'next-day lunch')
-    } else {
-      answer = `${recipe.title} is usable for meal prep, but it is better if you are fine cooking more often or scaling the recipe up.`
-      bestTimes.push('meal prep', 'fresh same-day meal')
-      watchouts.push('May need batch scaling for multiple containers')
-    }
-  } else if (normalizedQuestion.includes('snack')) {
-    headline = 'Snack fit'
-    if (totalMinutes <= 20 && !hasHeartySignals) {
-      verdict = 'good-fit'
-      answer = `${recipe.title} could work as a more filling snack because it is relatively quick and not too heavy.`
-      bestTimes.push('afternoon snack', 'light bite')
-    } else {
-      verdict = 'not-ideal'
-      answer = `${recipe.title} is probably more of a full meal than a snack because of the prep time or overall heft.`
-      bestTimes.push('lunch', 'dinner')
-      watchouts.push('More effort than a typical snack')
-    }
-  } else if (normalizedQuestion.includes('healthy') || normalizedQuestion.includes('health') || normalizedQuestion.includes('weight loss') || normalizedQuestion.includes('weight-loss')) {
-    headline = 'Health fit'
-    if (perServing && perServing.calories <= 550 && perServing.protein >= 25 && perServing.fat <= 25) {
-      verdict = 'good-fit'
-      answer = `${recipe.title} looks like a strong health-focused option because it keeps calories reasonable and delivers solid protein per serving.`
-      bestTimes.push('balanced lunch', 'balanced dinner')
-    } else if (perServing && perServing.calories >= Math.max(calorieTarget * 0.5, 800) && perServing.protein < Math.max(proteinTarget * 0.15, 20)) {
-      verdict = 'not-ideal'
-      answer = `${recipe.title} is probably not the best fit for a health-focused goal because the calories run high without much protein support.`
-      bestTimes.push('occasional dinner')
-      watchouts.push('High calories for a regular goal-driven meal')
-    } else {
-      answer = `${recipe.title} can fit a healthy plan, but it depends on your portion size and how well it lines up with your calorie and protein targets.`
-      bestTimes.push('balanced meal')
-    }
-  } else if (normalizedQuestion.includes('protein')) {
-    headline = 'Protein fit'
-    if (perServing && perServing.protein >= Math.max(30, proteinTarget * 0.25)) {
-      verdict = 'good-fit'
-      answer = `${recipe.title} is a solid protein-focused choice because it gives a strong amount of protein per serving.`
-      bestTimes.push('post-workout meal', 'high-protein lunch', 'high-protein dinner')
-    } else if (perServing && perServing.protein < 15) {
-      verdict = 'not-ideal'
-      answer = `${recipe.title} is not especially protein-forward on its own, so it may need a side or ingredient swap if protein is your focus.`
-      bestTimes.push('light meal')
-      watchouts.push('Low protein for a goal-focused meal')
-    } else {
-      answer = `${recipe.title} has some protein, but it is more moderate than high-protein.`
-      bestTimes.push('balanced meal')
-    }
-  } else {
-    if (hasBreakfastSignals) bestTimes.push('breakfast')
-    if (hasHeartySignals) bestTimes.push('dinner')
-    if (!bestTimes.length) bestTimes.push('lunch')
-    answer = `${recipe.title} can fit ${bestTimes.join(' or ')}, depending on portion size and how much time you have to cook.`
-  }
-
-  if (totalMinutes > 60) {
-    watchouts.push('Longer cook time')
-  }
-
-  if (recipe.ingredients.length > 12) {
-    watchouts.push('Ingredient list is a bit involved')
-  }
-
-  if (perServing && perServing.calories > 750) {
-    watchouts.push('Higher-calorie serving')
-  }
-
-  return {
-    headline,
-    verdict,
-    answer,
-    bestTimes: Array.from(new Set(bestTimes)).slice(0, 3),
-    watchouts: Array.from(new Set(watchouts)).slice(0, 3),
-    model: 'heuristic',
-    generatedAt: nowIso(),
-    question: String(question || '').trim(),
-  }
-}
-
-export async function getRecipeAiAskResponse(recipe, question, healthTargets = null) {
-  const nq = normalizeQuestion(question)
-  const cacheKey = getRecipeAskCacheKey(recipe, nq, healthTargets)
-  const cached = db.data.meta.aiAskCache?.[cacheKey]
+  const cacheKey = `${getRecipeCacheKey(recipe)}:${normalizedQuestion}`
+  const cached = await db.getMetaValue('aiAskCache:' + cacheKey)
   if (cached) {
     return cached
   }
 
-  let nutrition = null
-  if (config.usdaApiKey) {
-    try {
-      nutrition = await getRecipeNutrition(recipe)
-    } catch (error) {
-      logger.warn('Nutrition lookup failed for recipe ask, continuing without', { error: error.message })
-      nutrition = null
-    }
-  }
-
-  let response
-
-  if (!config.openrouterApiKey) {
-    response = buildFallbackRecipeAskResponse(recipe, nq, nutrition, healthTargets)
-  } else {
-    try {
-      response = await generateRecipeAskResponse(recipe, nq, nutrition, healthTargets)
-      response.question = nq
-    } catch (error) {
-      logger.warn('AI recipe ask failed, using heuristic fallback', { error: error.message })
-      response = buildFallbackRecipeAskResponse(recipe, nq, nutrition, healthTargets)
-    }
-  }
-
-  if (response.model === 'heuristic') {
-    return response
-  }
-
-  db.data.meta.aiAskCache[cacheKey] = response
-  await db.save()
+  const nutrition = await getRecipeNutrition(recipe)
+  const response = await generateRecipeAskResponse(recipe, question, nutrition)
+  await db.setMetaValue('aiAskCache:' + cacheKey, response)
   return response
 }
 
-// ── Planner helpers ─────────────────────────────────────────────
+// ── Meal planning helpers ───────────────────────────────────────
 
-function buildMealSlot(assignment, recipes) {
-  const recipe = recipes.find(candidate => candidate.id === assignment.recipeId)
+export async function getMealSlotsForWeek(householdId, startDate) {
+  const endDate = toDateKey(addDays(parseDateKey(startDate), 7))
+  const assignments = await db.getAssignmentsByWeek(householdId, startDate, endDate)
+  const recipes = await db.getRecipesByHousehold(householdId)
+  const recipeMap = new Map(recipes.map(r => [r.id, r]))
 
-  return {
-    id: assignment.id,
-    date: assignment.date,
-    mealType: assignment.mealType,
-    recipeId: assignment.recipeId,
-    recipe,
-    notes: assignment.notes,
-    servings: assignment.servings || recipe?.servings,
-    repeatWeekly: Boolean(assignment.repeatWeekly),
-    recurrenceId: assignment.recurrenceId || undefined,
+  const slots = {}
+  for (const mealType of MEAL_TYPES) {
+    slots[mealType] = {}
   }
+
+  for (const assignment of assignments) {
+    if (!slots[assignment.mealType]) slots[assignment.mealType] = {}
+    slots[assignment.mealType][assignment.date] = {
+      ...assignment,
+      recipe: recipeMap.get(assignment.recipeId),
+    }
+  }
+
+  return slots
 }
 
-function getMealTypeOrder(mealPeriods, mealType) {
-  const mealPeriodIndex = mealPeriods.indexOf(mealType)
-  return mealPeriodIndex === -1 ? MEAL_TYPES.length + 10 : mealPeriodIndex
+export async function applyRecurringMealsForWeek(householdId, startDate) {
+  const endDate = toDateKey(addDays(parseDateKey(startDate), 7))
+  const assignments = await db.getAssignmentsByHousehold(householdId)
+
+  const recurringByRecurrence = new Map()
+  for (const a of assignments) {
+    if (a.repeatWeekly && a.recurrenceId) {
+      if (!recurringByRecurrence.has(a.recurrenceId)) {
+        recurringByRecurrence.set(a.recurrenceId, a)
+      }
+    }
+  }
+
+  const existingAssignments = await db.getAssignmentsByWeek(householdId, startDate, endDate)
+  const existingKeys = new Set(existingAssignments.map(a => `${a.date}:${a.mealType}`))
+
+  const toCreate = []
+  for (const [, template] of recurringByRecurrence) {
+    for (let offset = 0; offset < 7; offset++) {
+      const date = toDateKey(addDays(parseDateKey(startDate), offset))
+      const dayOfWeek = new Date(date).getDay()
+      const templateDayOfWeek = new Date(template.date).getDay()
+
+      if (dayOfWeek === templateDayOfWeek) {
+        const key = `${date}:${template.mealType}`
+        if (!existingKeys.has(key)) {
+          toCreate.push({
+            id: createId('meal'),
+            householdId,
+            date,
+            mealType: template.mealType,
+            recipeId: template.recipeId,
+            notes: template.notes,
+            servings: template.servings,
+            repeatWeekly: false,
+          })
+        }
+      }
+    }
+  }
+
+  if (toCreate.length > 0) {
+    await db.createAssignments(toCreate)
+  }
+
+  return toCreate.length
 }
 
-function sortMealSlots(slots, mealPeriods) {
-  return slots.sort((left, right) => {
-    if (left.date !== right.date) {
-      return left.date.localeCompare(right.date)
-    }
+export async function copyWeekPlan(householdId, sourceStartDate, targetStartDate) {
+  const sourceEndDate = toDateKey(addDays(parseDateKey(sourceStartDate), 7))
+  const sourceAssignments = await db.getAssignmentsByWeek(householdId, sourceStartDate, sourceEndDate)
 
-    const mealTypeOrder = getMealTypeOrder(mealPeriods, left.mealType) - getMealTypeOrder(mealPeriods, right.mealType)
-    if (mealTypeOrder !== 0) {
-      return mealTypeOrder
-    }
+  const targetEndDate = toDateKey(addDays(parseDateKey(targetStartDate), 7))
+  const targetAssignments = await db.getAssignmentsByWeek(householdId, targetStartDate, targetEndDate)
+  const targetKeys = new Set(targetAssignments.map(a => `${a.date}:${a.mealType}`))
 
-    if (left.mealType !== right.mealType) {
-      return left.mealType.localeCompare(right.mealType)
-    }
+  const dayOffset = parseDateKey(targetStartDate) - parseDateKey(sourceStartDate)
+  const toCreate = []
 
-    return left.id.localeCompare(right.id)
-  })
-}
+  for (const assignment of sourceAssignments) {
+    const newDate = toDateKey(addDays(parseDateKey(assignment.date), dayOffset))
+    const key = `${newDate}:${assignment.mealType}`
 
-function getWeekOffset(dateKey) {
-  const day = parseDateKey(dateKey).getDay()
-  return day === 0 ? 6 : day - 1
-}
-
-export function getMealSlotsForWeek(householdId, weekStart) {
-  const recipes = getRecipesForHousehold(householdId)
-  const mealPeriods = getHouseholdPreferences(householdId).mealPeriods
-  const weekStartDate = typeof weekStart === 'string' && weekStart
-    ? weekStart
-    : toDateKey(startOfWeek())
-  const weekDates = new Set(Array.from({ length: 7 }, (_, index) => addDays(weekStartDate, index)))
-
-  return sortMealSlots(
-    db.data.mealAssignments
-      .filter(candidate => candidate.householdId === householdId && weekDates.has(candidate.date))
-      .map(assignment => buildMealSlot(assignment, recipes)),
-    mealPeriods,
-  )
-}
-
-export function copyWeekPlan(householdId, targetWeekStart, sourceWeekStart = addDays(targetWeekStart, -7)) {
-  const sourceSlots = getMealSlotsForWeek(householdId, sourceWeekStart)
-  const createdAssignments = []
-  let skippedCount = 0
-
-  for (const slot of sourceSlots) {
-    const targetDate = addDays(targetWeekStart, getWeekOffset(slot.date))
-    const exists = db.data.mealAssignments.some(candidate => (
-      candidate.householdId === householdId &&
-      candidate.date === targetDate &&
-      candidate.mealType === slot.mealType &&
-      candidate.recipeId === slot.recipeId
-    ))
-
-    if (exists) {
-      skippedCount++
-      continue
-    }
-
-    createdAssignments.push({
-      id: createId('slot'),
-      householdId,
-      date: targetDate,
-      mealType: slot.mealType,
-      recipeId: slot.recipeId,
-      notes: slot.notes || '',
-      servings: slot.servings,
-      repeatWeekly: Boolean(slot.repeatWeekly),
-      recurrenceId: slot.recurrenceId || undefined,
-    })
-  }
-
-  if (createdAssignments.length > 0) {
-    db.data.mealAssignments.push(...createdAssignments)
-  }
-
-  return {
-    weekStart: targetWeekStart,
-    sourceWeekStart,
-    createdCount: createdAssignments.length,
-    skippedCount,
-    slots: getMealSlotsForWeek(householdId, targetWeekStart),
-  }
-}
-
-export function applyRecurringMealsForWeek(householdId, targetWeekStart) {
-  const targetWeekDates = new Set(Array.from({ length: 7 }, (_, index) => addDays(targetWeekStart, index)))
-  const latestByRecurrence = new Map()
-
-  for (const assignment of db.data.mealAssignments) {
-    if (
-      assignment.householdId !== householdId ||
-      !assignment.recurrenceId ||
-      assignment.date >= targetWeekStart
-    ) {
-      continue
-    }
-
-    const previous = latestByRecurrence.get(assignment.recurrenceId)
-    if (!previous || assignment.date > previous.date) {
-      latestByRecurrence.set(assignment.recurrenceId, assignment)
+    if (!targetKeys.has(key)) {
+      toCreate.push({
+        id: createId('meal'),
+        householdId,
+        date: newDate,
+        mealType: assignment.mealType,
+        recipeId: assignment.recipeId,
+        notes: assignment.notes,
+        servings: assignment.servings,
+        repeatWeekly: false,
+      })
     }
   }
 
-  const createdAssignments = []
-  let skippedCount = 0
-
-  for (const latest of latestByRecurrence.values()) {
-    if (!latest.repeatWeekly) {
-      continue
-    }
-
-    const targetDate = addDays(targetWeekStart, getWeekOffset(latest.date))
-    const exists = db.data.mealAssignments.some(candidate => (
-      candidate.householdId === householdId &&
-      (
-        (candidate.recurrenceId && candidate.recurrenceId === latest.recurrenceId && targetWeekDates.has(candidate.date))
-        || (
-          candidate.date === targetDate &&
-          candidate.mealType === latest.mealType &&
-          candidate.recipeId === latest.recipeId
-        )
-      )
-    ))
-
-    if (exists) {
-      skippedCount++
-      continue
-    }
-
-    createdAssignments.push({
-      id: createId('slot'),
-      householdId,
-      date: targetDate,
-      mealType: latest.mealType,
-      recipeId: latest.recipeId,
-      notes: latest.notes || '',
-      servings: latest.servings,
-      repeatWeekly: true,
-      recurrenceId: latest.recurrenceId,
-    })
+  if (toCreate.length > 0) {
+    await db.createAssignments(toCreate)
   }
 
-  if (createdAssignments.length > 0) {
-    db.data.mealAssignments.push(...createdAssignments)
-  }
-
-  return {
-    weekStart: targetWeekStart,
-    createdCount: createdAssignments.length,
-    skippedCount,
-    slots: getMealSlotsForWeek(householdId, targetWeekStart),
-  }
-}
-
-export async function getWeekNutrition(householdId, weekStart) {
-  const slots = getMealSlotsForWeek(householdId, weekStart).filter(slot => slot.recipe)
-
-  // Fetch all nutrition data in parallel instead of sequentially
-  const uniqueRecipes = new Map()
-  for (const slot of slots) {
-    if (slot.recipe && !uniqueRecipes.has(slot.recipe.id)) {
-      uniqueRecipes.set(slot.recipe.id, slot.recipe)
-    }
-  }
-
-  const nutritionResults = await Promise.all(
-    Array.from(uniqueRecipes.values()).map(async recipe => {
-      const nutrition = await getRecipeNutrition(recipe)
-      return [recipe.id, nutrition]
-    })
-  )
-  const nutritionMap = new Map(nutritionResults)
-
-  const daily = new Map()
-  let total = { calories: 0, protein: 0, carbs: 0, fat: 0 }
-
-  for (const slot of slots) {
-    const recipe = slot.recipe
-    if (!recipe) continue
-
-    const recipeNutrition = nutritionMap.get(recipe.id)
-    if (!recipeNutrition) continue
-
-    const multiplier = recipe.servings > 0 && slot.servings
-      ? slot.servings / recipe.servings
-      : 1
-    const contribution = scaleNutritionValues(recipeNutrition.total, multiplier)
-
-    total = mergeNutritionValues(total, contribution)
-
-    const dayEntry = daily.get(slot.date) || {
-      date: slot.date,
-      total: { calories: 0, protein: 0, carbs: 0, fat: 0 },
-      meals: [],
-    }
-
-    dayEntry.total = mergeNutritionValues(dayEntry.total, contribution)
-    dayEntry.meals.push({
-      slotId: slot.id,
-      mealType: slot.mealType,
-      recipeId: recipe.id,
-      recipeTitle: recipe.title,
-      servings: slot.servings || recipe.servings,
-      nutrition: contribution,
-    })
-
-    daily.set(slot.date, dayEntry)
-  }
-
-  return {
-    weekStart,
-    plannedMealCount: slots.length,
-    source: 'USDA FoodData Central',
-    total,
-    perDay: Array.from(daily.values()).sort((left, right) => left.date.localeCompare(right.date)),
-  }
+  return toCreate.length
 }
 
 // ── Shopping helpers ────────────────────────────────────────────
 
-export function buildShoppingGeneration(householdId, weekStart) {
-  const slots = getMealSlotsForWeek(householdId, weekStart).filter(slot => slot.recipe)
-  const pantryItems = db.data.pantryItems.filter(item => item.householdId === householdId)
-  const pantryQuantities = new Map()
-  const ingredientTotals = new Map()
+export async function buildShoppingGeneration(householdId, weekStart) {
+  const slots = await getMealSlotsForWeek(householdId, weekStart)
+  const pantryItems = await db.getPantryItems(householdId)
+  const pantryMap = new Map()
 
   for (const item of pantryItems) {
     const key = ingredientMatchKey(item.name, item.unit)
-    pantryQuantities.set(key, (pantryQuantities.get(key) || 0) + item.quantity)
+    pantryMap.set(key, item)
   }
 
-  for (const slot of slots) {
-    const recipe = slot.recipe
-    if (!recipe) continue
+  const ingredients = {}
 
-    const multiplier = recipe.servings > 0 && slot.servings
-      ? slot.servings / recipe.servings
-      : 1
+  for (const mealType of MEAL_TYPES) {
+    for (const [date, slot] of Object.entries(slots[mealType] || {})) {
+      if (!slot.recipe) continue
 
-    for (const ingredient of recipe.ingredients) {
-      const key = ingredientMatchKey(ingredient.name, ingredient.unit)
-      const current = ingredientTotals.get(key) || {
-        name: ingredient.name,
-        quantity: 0,
-        unit: ingredient.unit,
-        category: guessShoppingCategory(ingredient.name),
-        recipeNames: new Set(),
+      const scaleFactor = (slot.servings || 1) / (slot.recipe.servings || 1)
+
+      for (const ing of slot.recipe.ingredients || []) {
+        const key = ingredientMatchKey(ing.name, ing.unit)
+        const scaled = {
+          ...ing,
+          quantity: (ing.quantity || 0) * scaleFactor,
+        }
+
+        if (!ingredients[key]) {
+          ingredients[key] = { ...scaled, count: 1 }
+        } else {
+          ingredients[key].quantity += scaled.quantity
+          ingredients[key].count += 1
+        }
       }
-
-      current.quantity += ingredient.quantity * multiplier
-      current.recipeNames.add(recipe.title)
-      ingredientTotals.set(key, current)
     }
   }
 
-  let pantryCoveredCount = 0
   const generatedItems = []
-
-  for (const ingredient of ingredientTotals.values()) {
-    const key = ingredientMatchKey(ingredient.name, ingredient.unit)
-    const available = pantryQuantities.get(key) || 0
-    const missingQuantity = Math.max(ingredient.quantity - available, 0)
-
-    if (available > 0) {
-      pantryCoveredCount++
+  for (const [key, ing] of Object.entries(ingredients)) {
+    if (!pantryMap.has(key)) {
+      generatedItems.push({
+        id: createId('shop'),
+        householdId,
+        name: ing.name,
+        quantity: ing.quantity,
+        unit: ing.unit,
+        category: guessShoppingCategory(ing.name),
+        checked: false,
+        generated: true,
+        sourceWeekStart: weekStart,
+        addedAt: nowIso(),
+        syncStatus: 'synced',
+      })
     }
-
-    if (missingQuantity <= 0) {
-      continue
-    }
-
-    generatedItems.push({
-      id: createId('item'),
-      householdId,
-      name: ingredient.name,
-      quantity: Number(missingQuantity.toFixed(2)),
-      unit: ingredient.unit,
-      category: ingredient.category,
-      checked: false,
-      sourceRecipeName: ingredient.recipeNames.size === 1
-        ? Array.from(ingredient.recipeNames)[0]
-        : `${ingredient.recipeNames.size} planned meals`,
-      addedBy: 'system',
-      addedAt: nowIso(),
-      syncStatus: 'synced',
-      generated: true,
-      sourceWeekStart: weekStart,
-    })
   }
+
+  return { generatedItems }
+}
+
+export async function getShoppingSummaryInput(householdId) {
+  const shoppingItems = await db.getShoppingItems(householdId)
+  const pantryItems = await db.getPantryItems(householdId)
 
   return {
-    weekStart,
-    mergedIngredientCount: ingredientTotals.size,
-    pantryCoveredCount,
-    generatedItems,
+    shoppingItems: shoppingItems.filter(s => !s.checked),
+    pantryItems: pantryItems.filter(p => {
+      if (!p.lowStockThreshold || !p.quantity) return false
+      return p.quantity <= p.lowStockThreshold
+    }),
   }
 }
 
-function getShoppingItemDateKey(item) {
-  return toDateKey(item.addedAt)
-}
-
-export function filterShoppingItemsByPeriod(items, period, weekStart) {
-  if (period === 'all') {
-    return items
-  }
-
-  const today = toDateKey(new Date())
-  const currentWeekStart = weekStart || toDateKey(startOfWeek())
-  const currentMonthPrefix = today.slice(0, 7)
-
-  return items.filter(item => {
-    const itemDate = getShoppingItemDateKey(item)
-
-    if (period === 'day') {
-      return itemDate === today
-    }
-
-    if (period === 'week') {
-      return itemDate >= currentWeekStart && itemDate <= addDays(currentWeekStart, 6)
-    }
-
-    if (period === 'month') {
-      return itemDate.startsWith(currentMonthPrefix)
-    }
-
-    return true
-  })
-}
-
-function getShoppingSummaryInput(householdId, weekStart, period = 'all') {
-  const preferences = getHouseholdPreferences(householdId)
-  const uncheckedItems = filterShoppingItemsByPeriod(
-    db.data.shoppingItems
-      .filter(item => item.householdId === householdId && !item.checked)
-      .sort((left, right) => new Date(left.addedAt).getTime() - new Date(right.addedAt).getTime()),
-    period,
-    weekStart,
-  )
-  const pantryLowStockItems = db.data.pantryItems
-    .filter(item => item.householdId === householdId && item.quantity <= item.lowStockThreshold)
-    .sort((left, right) => left.quantity - right.quantity)
-  const categoryCounts = Object.entries(uncheckedItems.reduce((accumulator, item) => {
-    accumulator[item.category] = (accumulator[item.category] || 0) + 1
-    return accumulator
-  }, {}))
-    .map(([category, count]) => ({ category, count }))
-    .sort((left, right) => right.count - left.count)
-
-  const weekGeneratedItems = uncheckedItems.filter(item => item.generated && item.sourceWeekStart === weekStart)
-  const preferenceAlerts = []
-
-  if (preferences.dietaryPreferences.includes('vegetarian') && uncheckedItems.some(item => item.category === 'meat')) {
-    preferenceAlerts.push('Vegetarian household preference is active, but the list still contains meat items.')
-  }
-
-  if (preferences.dietaryPreferences.includes('dairy-free') && uncheckedItems.some(item => item.category === 'dairy')) {
-    preferenceAlerts.push('Dairy-free household preference is active, but the list still contains dairy items.')
-  }
-
-  return {
-    weekStart,
-    period,
-    totalItems: uncheckedItems.length,
-    generatedItemCount: weekGeneratedItems.length,
-    preferences: preferences.dietaryPreferences,
-    categoryCounts,
-    items: uncheckedItems.slice(0, 40).map(item => ({
-      name: item.name,
-      quantity: item.quantity,
-      unit: item.unit,
-      category: item.category,
-      sourceRecipeName: item.sourceRecipeName,
-      generated: Boolean(item.generated),
-    })),
-    pantryLowStockItems: pantryLowStockItems.slice(0, 10).map(item => ({
-      name: item.name,
-      quantity: item.quantity,
-      unit: item.unit,
-      threshold: item.lowStockThreshold,
-    })),
-    preferenceAlerts,
-  }
-}
-
-function buildFallbackShoppingSummary(input) {
-  const topCategories = input.categoryCounts.slice(0, 3).map(entry => entry.category)
-  const alerts = []
-
-  if (input.totalItems >= 25) {
-    alerts.push('This is a large shop. Split it by aisle or store section before you go.')
-  }
-
-  if (input.pantryLowStockItems.length > 0) {
-    const lowStockNames = input.pantryLowStockItems.slice(0, 2).map(item => item.name).join(', ')
-    alerts.push(`Pantry is running low on ${lowStockNames}.`)
-  }
-
-  alerts.push(...input.preferenceAlerts.slice(0, 3 - alerts.length))
-
-  return {
-    headline: input.totalItems === 0
-      ? 'Shopping list is clear'
-      : `${input.totalItems} items ready to shop`,
-    summary: input.totalItems === 0
-      ? 'There are no unchecked shopping items right now. Generate a list from the planner or add items manually.'
-      : `Your active list is concentrated in ${topCategories.join(', ') || 'multiple categories'}. ${input.generatedItemCount > 0 ? `${input.generatedItemCount} items came from the current meal plan.` : 'This list currently mixes manual and generated items.'}`,
-    alerts,
-    focus: topCategories,
-    model: 'heuristic',
-    generatedAt: nowIso(),
-  }
-}
-
-export async function getShoppingSummary(householdId, weekStart, period = 'all') {
-  const input = getShoppingSummaryInput(householdId, weekStart, period)
-
-  if (input.totalItems === 0) {
-    return buildFallbackShoppingSummary(input)
-  }
-
+export async function getShoppingListSummary(householdId) {
   if (!config.openrouterApiKey) {
-    return buildFallbackShoppingSummary(input)
+    const { shoppingItems, pantryItems } = await getShoppingSummaryInput(householdId)
+    return {
+      summary: `You have ${shoppingItems.length} items to buy and ${pantryItems.length} low-stock pantry items.`,
+      items: shoppingItems,
+      lowStockItems: pantryItems,
+    }
   }
 
-  try {
-    return await generateShoppingSummary(input)
-  } catch (error) {
-    logger.warn('AI shopping summary failed, using heuristic fallback', { error: error.message })
-    return buildFallbackShoppingSummary(input)
+  const input = await getShoppingSummaryInput(householdId)
+  const summary = await generateShoppingSummary(input)
+  return {
+    summary,
+    items: input.shoppingItems,
+    lowStockItems: input.pantryItems,
   }
 }
