@@ -325,20 +325,10 @@ export async function getMealSlotsForWeek(householdId, startDate) {
   const recipes = await db.getRecipesByHousehold(householdId)
   const recipeMap = new Map(recipes.map(r => [r.id, r]))
 
-  const slots = {}
-  for (const mealType of MEAL_TYPES) {
-    slots[mealType] = {}
-  }
-
-  for (const assignment of assignments) {
-    if (!slots[assignment.mealType]) slots[assignment.mealType] = {}
-    slots[assignment.mealType][assignment.date] = {
-      ...assignment,
-      recipe: recipeMap.get(assignment.recipeId),
-    }
-  }
-
-  return slots
+  return assignments.map(assignment => ({
+    ...assignment,
+    recipe: recipeMap.get(assignment.recipeId),
+  }))
 }
 
 export async function applyRecurringMealsForWeek(householdId, startDate) {
@@ -386,10 +376,17 @@ export async function applyRecurringMealsForWeek(householdId, startDate) {
     await db.createAssignments(toCreate)
   }
 
-  return toCreate.length
+  const slots = await getMealSlotsForWeek(householdId, startDate)
+  return {
+    weekStart: startDate,
+    createdCount: toCreate.length,
+    skippedCount: 0,
+    slots,
+  }
 }
 
-export async function copyWeekPlan(householdId, sourceStartDate, targetStartDate) {
+export async function copyWeekPlan(householdId, targetStartDate) {
+  const sourceStartDate = addDays(targetStartDate, -7)
   const sourceEndDate = addDays(sourceStartDate, 7)
   const sourceAssignments = await db.getAssignmentsByWeek(householdId, sourceStartDate, sourceEndDate)
 
@@ -422,7 +419,14 @@ export async function copyWeekPlan(householdId, sourceStartDate, targetStartDate
     await db.createAssignments(toCreate)
   }
 
-  return toCreate.length
+  const slots = await getMealSlotsForWeek(householdId, targetStartDate)
+  return {
+    weekStart: targetStartDate,
+    sourceWeekStart: sourceStartDate,
+    createdCount: toCreate.length,
+    skippedCount: sourceAssignments.length - toCreate.length,
+    slots,
+  }
 }
 
 // ── Shopping helpers ────────────────────────────────────────────
@@ -439,25 +443,23 @@ export async function buildShoppingGeneration(householdId, weekStart) {
 
   const ingredients = {}
 
-  for (const mealType of MEAL_TYPES) {
-    for (const [date, slot] of Object.entries(slots[mealType] || {})) {
-      if (!slot.recipe) continue
+  for (const slot of slots) {
+    if (!slot.recipe) continue
 
-      const scaleFactor = (slot.servings || 1) / (slot.recipe.servings || 1)
+    const scaleFactor = (slot.servings || 1) / (slot.recipe.servings || 1)
 
-      for (const ing of slot.recipe.ingredients || []) {
-        const key = ingredientMatchKey(ing.name, ing.unit)
-        const scaled = {
-          ...ing,
-          quantity: (ing.quantity || 0) * scaleFactor,
-        }
+    for (const ing of slot.recipe.ingredients || []) {
+      const key = ingredientMatchKey(ing.name, ing.unit)
+      const scaled = {
+        ...ing,
+        quantity: (ing.quantity || 0) * scaleFactor,
+      }
 
-        if (!ingredients[key]) {
-          ingredients[key] = { ...scaled, count: 1 }
-        } else {
-          ingredients[key].quantity += scaled.quantity
-          ingredients[key].count += 1
-        }
+      if (!ingredients[key]) {
+        ingredients[key] = { ...scaled, count: 1 }
+      } else {
+        ingredients[key].quantity += scaled.quantity
+        ingredients[key].count += 1
       }
     }
   }
