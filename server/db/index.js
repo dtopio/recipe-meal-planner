@@ -586,14 +586,49 @@ function toInviteObject(row) {
 }
 
 function toPreferencesObject(row) {
+  const parseArray = (value) => {
+    if (Array.isArray(value)) return value
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value)
+      } catch {
+        return []
+      }
+    }
+    return value || []
+  }
+
   return {
     householdId: row.household_id,
-    dietaryPreferences: row.dietary_preferences || [],
-    mealPeriods: row.meal_periods || [],
+    dietaryPreferences: parseArray(row.dietary_preferences),
+    mealPeriods: parseArray(row.meal_periods),
   }
 }
 
 function toRecipeObject(row) {
+  const parseArray = (value) => {
+    if (Array.isArray(value)) return value
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value)
+      } catch {
+        return []
+      }
+    }
+    return value || []
+  }
+
+  const parseJsonb = (value) => {
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value)
+      } catch {
+        return value
+      }
+    }
+    return value || []
+  }
+
   return {
     id: row.id,
     householdId: row.household_id,
@@ -603,9 +638,9 @@ function toRecipeObject(row) {
     prepTime: row.prep_time,
     cookTime: row.cook_time,
     servings: row.servings,
-    tags: row.tags || [],
-    ingredients: row.ingredients || [],
-    instructions: row.instructions || [],
+    tags: parseArray(row.tags),
+    ingredients: parseJsonb(row.ingredients),
+    instructions: parseArray(row.instructions),
     sourceUrl: row.source_url,
     credits: row.credits,
     createdBy: row.created_by,
