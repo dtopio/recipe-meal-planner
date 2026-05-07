@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
-import { LogOut, User, Bell, Accessibility, ShieldCheck, Activity, Sun, Moon, Monitor, Palette, Lock, Trash2 } from 'lucide-vue-next'
+import { LogOut, User, Bell, ShieldCheck, Activity, Sun, Moon, Monitor, Palette, Lock, Trash2 } from 'lucide-vue-next'
 import { useUiStore } from '@/stores/ui'
 import { toast } from 'vue-sonner'
 import { DEFAULT_HEALTH_TARGETS, DEFAULT_MEAL_PERIODS } from '@/types'
@@ -25,6 +25,7 @@ const currentPassword = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
 const deletePassword = ref('')
+const deleteConfirmation = ref('')
 const dietaryPreferences = ref<DietaryPreference[]>([])
 const mealPeriods = ref<MealType[]>([...DEFAULT_MEAL_PERIODS])
 const newMealPeriod = ref('')
@@ -52,21 +53,6 @@ const dietaryOptions: { value: DietaryPreference; label: string; description: st
     description: 'Flag recipes that likely contain milk, butter, cheese, or cream.',
   },
 ]
-
-const preferencesDirty = computed(() => {
-  const persistedDietary = [...(household.preferences?.dietaryPreferences || [])].sort().join(',')
-  const draftDietary = [...dietaryPreferences.value].sort().join(',')
-  const persistedPeriods = [...(household.preferences?.mealPeriods || DEFAULT_MEAL_PERIODS)].join(',')
-  const draftPeriods = [...mealPeriods.value].join(',')
-  return persistedDietary !== draftDietary || persistedPeriods !== draftPeriods
-})
-
-const healthTargetsDirty = computed(() => {
-  const persisted = auth.user?.healthTargets || DEFAULT_HEALTH_TARGETS
-  return ['calories', 'protein', 'carbs', 'fat'].some(key => (
-    Number(healthTargets.value[key as keyof HealthTargets]) !== Number(persisted[key as keyof HealthTargets])
-  ))
-})
 
 const healthTargetsValid = computed(() => (
   ['calories', 'protein', 'carbs', 'fat'].every(key => Number(healthTargets.value[key as keyof HealthTargets]) > 0)
@@ -193,12 +179,22 @@ function handleDeleteAccount() {
     confirmLabel: 'Delete my account',
     variant: 'destructive',
     onConfirm: async () => {
-      if (!deletePassword.value) {
+      const isGoogleOnly = auth.user?.hasPassword === false
+      if (isGoogleOnly) {
+        if (deleteConfirmation.value !== 'DELETE') {
+          toast.error('Type DELETE to confirm')
+          return
+        }
+      } else if (!deletePassword.value) {
         toast.error('Enter your password to confirm')
         return
       }
       try {
-        await auth.deleteAccount(deletePassword.value)
+        await auth.deleteAccount(
+          isGoogleOnly
+            ? { confirmation: deleteConfirmation.value }
+            : { password: deletePassword.value },
+        )
         router.push('/login')
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Failed to delete account')
@@ -414,7 +410,7 @@ async function handleSaveHealthTargets() {
       <Button
         size="sm"
         class="mt-5 shadow-md shadow-primary/10 press-scale"
-        :disabled="!preferencesDirty || household.loading"
+        :disabled="household.loading"
         @click="handleSavePreferences"
       >
         Save household preferences
@@ -470,7 +466,7 @@ async function handleSaveHealthTargets() {
       <Button
         size="sm"
         class="mt-5 shadow-md shadow-primary/10 press-scale"
-        :disabled="!healthTargetsDirty || !healthTargetsValid || auth.loading"
+        :disabled="!healthTargetsValid || auth.loading"
         @click="handleSaveHealthTargets"
       >
         Save health targets
@@ -513,36 +509,8 @@ async function handleSaveHealthTargets() {
       </div>
     </div>
 
-    <!-- Accessibility -->
-    <div class="surface-card p-5 lg:p-6">
-      <h3 class="font-bold text-foreground tracking-tight mb-4 flex items-center gap-2">
-        <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-          <Accessibility class="w-4 h-4 text-primary" />
-        </div>
-        Accessibility
-      </h3>
-
-      <div class="space-y-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium text-foreground">High contrast mode</p>
-            <p class="text-xs text-muted-foreground">Increase contrast for better readability</p>
-          </div>
-          <Switch :model-value="false" />
-        </div>
-        <Separator />
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium text-foreground">Reduce motion</p>
-            <p class="text-xs text-muted-foreground">Minimize animations and transitions</p>
-          </div>
-          <Switch :model-value="false" />
-        </div>
-      </div>
-    </div>
-
     <!-- Change password -->
-    <div class="surface-card p-5 lg:p-6">
+    <div v-if="auth.user?.hasPassword !== false" class="surface-card p-5 lg:p-6">
       <h3 class="font-bold text-foreground tracking-tight mb-4 flex items-center gap-2">
         <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
           <Lock class="w-4 h-4 text-primary" />
@@ -592,14 +560,18 @@ async function handleSaveHealthTargets() {
       </p>
 
       <div class="space-y-4">
-        <div class="space-y-2">
+        <div v-if="auth.user?.hasPassword === false" class="space-y-2">
+          <Label for="delete-confirmation">Type <span class="font-mono font-bold">DELETE</span> to confirm</Label>
+          <Input id="delete-confirmation" v-model="deleteConfirmation" placeholder="DELETE" />
+        </div>
+        <div v-else class="space-y-2">
           <Label for="delete-password">Confirm your password</Label>
           <Input id="delete-password" v-model="deletePassword" type="password" placeholder="Enter your password" />
         </div>
         <Button
           variant="outline"
           class="w-full text-destructive border-destructive/30 hover:bg-destructive/10 press-scale"
-          :disabled="!deletePassword || auth.loading"
+          :disabled="(auth.user?.hasPassword === false ? deleteConfirmation !== 'DELETE' : !deletePassword) || auth.loading"
           @click="handleDeleteAccount"
         >
           <Trash2 class="w-4 h-4 mr-1.5" /> Delete my account

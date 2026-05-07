@@ -193,13 +193,13 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function deleteAccount(password: string) {
+  async function deleteAccount(credentials: { password?: string; confirmation?: string }) {
     loading.value = true
     error.value = null
     try {
       await apiClient<boolean>('/auth/delete-account', {
         method: 'POST',
-        body: JSON.stringify({ password }),
+        body: JSON.stringify(credentials),
       })
       logout()
     } catch (e: unknown) {

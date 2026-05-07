@@ -7,6 +7,7 @@ export interface User {
   createdAt: string
   currentHouseholdId?: string
   healthTargets: HealthTargets
+  hasPassword?: boolean
 }
 
 export interface Session {

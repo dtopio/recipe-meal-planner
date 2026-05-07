@@ -200,10 +200,17 @@ router.post('/change-password', requireAuth, asyncHandler(async (req, res) => {
 // ── Delete account ──────────────────────────────────────────────
 
 router.post('/delete-account', requireAuth, asyncHandler(async (req, res) => {
-  const dto = z.object({ password: z.string().min(1) }).parse(req.body)
+  const dto = z.object({
+    password: z.string().min(1).optional(),
+    confirmation: z.string().optional(),
+  }).parse(req.body)
 
-  if (!(await verifyPassword(dto.password, req.auth.user.password))) {
-    return sendError(res, 401, 'Password is incorrect', 'INVALID_CREDENTIALS')
+  if (req.auth.user.password) {
+    if (!dto.password || !(await verifyPassword(dto.password, req.auth.user.password))) {
+      return sendError(res, 401, 'Password is incorrect', 'INVALID_CREDENTIALS')
+    }
+  } else if (dto.confirmation !== 'DELETE') {
+    return sendError(res, 400, 'Type DELETE to confirm', 'INVALID_CONFIRMATION')
   }
 
   const userId = req.auth.user.id

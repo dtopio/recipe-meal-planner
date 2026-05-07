@@ -90,6 +90,7 @@ export function serializeUser(user) {
     createdAt: user.createdAt,
     currentHouseholdId: user.currentHouseholdId || undefined,
     healthTargets: normalizeHealthTargets(user.healthTargets),
+    hasPassword: Boolean(user.password),
   }
 }
 
