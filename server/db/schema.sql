@@ -3,13 +3,18 @@
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
-  password TEXT NOT NULL,
+  password TEXT,
   display_name TEXT NOT NULL,
   avatar_url TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   current_household_id TEXT,
-  health_targets JSONB NOT NULL DEFAULT '{}'
+  health_targets JSONB NOT NULL DEFAULT '{}',
+  google_id TEXT UNIQUE
 );
+
+-- Migrations for existing databases:
+ALTER TABLE users ALTER COLUMN password DROP NOT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT UNIQUE;
 
 CREATE TABLE IF NOT EXISTS households (
   id TEXT PRIMARY KEY,

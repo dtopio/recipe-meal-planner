@@ -48,12 +48,17 @@ export async function getUserByEmail(email) {
   return result.length > 0 ? toUserObject(result[0]) : null
 }
 
+export async function getUserByGoogleId(googleId) {
+  const result = await sql`SELECT * FROM users WHERE google_id = ${googleId}`
+  return result.length > 0 ? toUserObject(result[0]) : null
+}
+
 export async function createUser(user) {
   try {
     logger.info('Creating user', { id: user.id, email: user.email })
     const result = await sql`
-      INSERT INTO users (id, email, password, display_name, avatar_url, created_at, current_household_id, health_targets)
-      VALUES (${user.id}, ${user.email}, ${user.password}, ${user.displayName}, ${user.avatarUrl || null}, ${user.createdAt}, ${user.currentHouseholdId || null}, ${JSON.stringify(user.healthTargets || {})})
+      INSERT INTO users (id, email, password, display_name, avatar_url, created_at, current_household_id, health_targets, google_id)
+      VALUES (${user.id}, ${user.email}, ${user.password || null}, ${user.displayName}, ${user.avatarUrl || null}, ${user.createdAt}, ${user.currentHouseholdId || null}, ${JSON.stringify(user.healthTargets || {})}, ${user.googleId || null})
       RETURNING *
     `
     logger.info('User created successfully', { id: result[0]?.id })
@@ -537,6 +542,7 @@ function toUserObject(row) {
     createdAt: row.created_at,
     currentHouseholdId: row.current_household_id,
     healthTargets: row.health_targets || {},
+    googleId: row.google_id,
   }
 }
 

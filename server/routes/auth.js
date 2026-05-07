@@ -12,8 +12,34 @@ import {
   updateHouseholdMemberSnapshots,
 } from '../helpers.js'
 import * as db from '../db/index.js'
+import { config } from '../config.js'
+import { logger } from '../logger.js'
 
 const router = Router()
+
+async function verifyGoogleIdToken(idToken) {
+  const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`)
+  if (!response.ok) {
+    throw new Error('Failed to verify Google ID token')
+  }
+  const payload = await response.json()
+  if (!config.googleClientId) {
+    throw new Error('GOOGLE_CLIENT_ID is not configured on the server')
+  }
+  if (payload.aud !== config.googleClientId) {
+    throw new Error('Google token audience mismatch')
+  }
+  if (payload.iss !== 'https://accounts.google.com' && payload.iss !== 'accounts.google.com') {
+    throw new Error('Invalid Google token issuer')
+  }
+  if (Number(payload.exp) * 1000 < Date.now()) {
+    throw new Error('Google token has expired')
+  }
+  if (payload.email_verified !== 'true' && payload.email_verified !== true) {
+    throw new Error('Google account email is not verified')
+  }
+  return payload
+}
 
 const loginSchema = z.object({
   email: z.string().email().max(100),
@@ -84,6 +110,49 @@ router.post('/login', authLimiter, asyncHandler(async (req, res) => {
 
   const session = await createSession(user)
   sendOk(res, session, 'Signed in')
+}))
+
+router.post('/google', authLimiter, asyncHandler(async (req, res) => {
+  const dto = z.object({ credential: z.string().min(10) }).parse(req.body)
+
+  let payload
+  try {
+    payload = await verifyGoogleIdToken(dto.credential)
+  } catch (error) {
+    logger.warn('Google sign-in verification failed', { error: error.message })
+    return sendError(res, 401, 'Could not verify Google sign-in', 'GOOGLE_AUTH_FAILED')
+  }
+
+  const googleId = payload.sub
+  const email = String(payload.email || '').toLowerCase()
+  if (!googleId || !email) {
+    return sendError(res, 400, 'Google account is missing required fields', 'GOOGLE_AUTH_FAILED')
+  }
+
+  let user = await db.getUserByGoogleId(googleId)
+
+  if (!user) {
+    const existingByEmail = await db.getUserByEmail(email)
+    if (existingByEmail) {
+      await db.updateUser(existingByEmail.id, { googleId })
+      user = await db.getUserById(existingByEmail.id)
+    } else {
+      user = await db.createUser({
+        id: createId('user'),
+        email,
+        password: null,
+        displayName: payload.name || payload.given_name || email.split('@')[0],
+        avatarUrl: payload.picture || undefined,
+        createdAt: nowIso(),
+        currentHouseholdId: undefined,
+        healthTargets: { ...DEFAULT_HEALTH_TARGETS },
+        googleId,
+      })
+    }
+  }
+
+  const session = await createSession(user)
+  sendOk(res, session, 'Signed in with Google')
 }))
 
 router.get('/me', requireAuth, (req, res) => {
