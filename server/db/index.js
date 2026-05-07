@@ -65,15 +65,10 @@ export async function createUser(user) {
 }
 
 export async function updateUser(id, fields) {
-  const updates = Object.entries(fields).map(([key, value]) => {
-    const col = toSnakeCase(key)
-    if (key === 'healthTargets') return [col, JSON.stringify(value)]
-    return [col, value]
-  })
-
-  const setClauses = updates.map(([col, val], i) => `${col} = $${i + 2}`).join(', ')
-  const values = updates.map(([, val]) => val)
-
+  const updates = sanitizeUpdates(fields, ['healthTargets'])
+  if (Object.keys(updates).length === 0) {
+    return await getUserById(id)
+  }
   const result = await sql`
     UPDATE users SET ${sql(updates)} WHERE id = ${id} RETURNING *
   `
@@ -130,7 +125,7 @@ export async function getHouseholdById(id) {
 export async function createHousehold(household) {
   const result = await sql`
     INSERT INTO households (id, name, color, avatar_url, created_at)
-    VALUES (${household.id}, ${household.name}, ${household.color}, ${household.avatarUrl}, ${household.createdAt})
+    VALUES (${household.id}, ${household.name}, ${household.color || null}, ${household.avatarUrl || null}, ${household.createdAt})
     RETURNING *
   `
   return toHouseholdObject(result[0])
@@ -138,7 +133,7 @@ export async function createHousehold(household) {
 
 export async function updateHousehold(id, fields) {
   const result = await sql`
-    UPDATE households SET ${sql(Object.fromEntries(Object.entries(fields).map(([k, v]) => [toSnakeCase(k), v])))} WHERE id = ${id} RETURNING *
+    UPDATE households SET ${sql(sanitizeUpdates(fields))} WHERE id = ${id} RETURNING *
   `
   return result.length > 0 ? toHouseholdObject(result[0]) : null
 }
@@ -164,7 +159,7 @@ export async function getMemberByUserAndHousehold(userId, householdId) {
 export async function createMember(member) {
   const result = await sql`
     INSERT INTO household_members (id, user_id, household_id, display_name, avatar_url, role, joined_at)
-    VALUES (${member.id}, ${member.userId}, ${member.householdId}, ${member.displayName}, ${member.avatarUrl}, ${member.role}, ${member.joinedAt})
+    VALUES (${member.id}, ${member.userId}, ${member.householdId}, ${member.displayName}, ${member.avatarUrl || null}, ${member.role}, ${member.joinedAt})
     RETURNING *
   `
   return toMemberObject(result[0])
@@ -172,7 +167,7 @@ export async function createMember(member) {
 
 export async function updateMember(id, fields) {
   const result = await sql`
-    UPDATE household_members SET ${sql(Object.fromEntries(Object.entries(fields).map(([k, v]) => [toSnakeCase(k), v])))} WHERE id = ${id} RETURNING *
+    UPDATE household_members SET ${sql(sanitizeUpdates(fields))} WHERE id = ${id} RETURNING *
   `
   return result.length > 0 ? toMemberObject(result[0]) : null
 }
@@ -255,20 +250,16 @@ export async function getRecipeBySourceUrl(householdId, sourceUrl) {
 export async function createRecipe(recipe) {
   const result = await sql`
     INSERT INTO recipes (id, household_id, title, description, image_url, prep_time, cook_time, servings, tags, ingredients, instructions, source_url, credits, created_by, created_at, updated_at)
-    VALUES (${recipe.id}, ${recipe.householdId}, ${recipe.title}, ${recipe.description}, ${recipe.imageUrl}, ${recipe.prepTime}, ${recipe.cookTime}, ${recipe.servings}, ${JSON.stringify(recipe.tags || [])}, ${JSON.stringify(recipe.ingredients || [])}, ${JSON.stringify(recipe.instructions || [])}, ${recipe.sourceUrl}, ${recipe.credits}, ${recipe.createdBy}, ${recipe.createdAt}, ${recipe.updatedAt})
+    VALUES (${recipe.id}, ${recipe.householdId}, ${recipe.title}, ${recipe.description || null}, ${recipe.imageUrl || null}, ${recipe.prepTime || null}, ${recipe.cookTime || null}, ${recipe.servings || null}, ${JSON.stringify(recipe.tags || [])}, ${JSON.stringify(recipe.ingredients || [])}, ${JSON.stringify(recipe.instructions || [])}, ${recipe.sourceUrl || null}, ${recipe.credits || null}, ${recipe.createdBy || null}, ${recipe.createdAt}, ${recipe.updatedAt})
     RETURNING *
   `
   return toRecipeObject(result[0])
 }
 
 export async function updateRecipe(id, fields) {
-  const updates = {}
-  for (const [key, value] of Object.entries(fields)) {
-    if (['tags', 'ingredients', 'instructions'].includes(key)) {
-      updates[toSnakeCase(key)] = JSON.stringify(value)
-    } else {
-      updates[toSnakeCase(key)] = value
-    }
+  const updates = sanitizeUpdates(fields, ['tags', 'ingredients', 'instructions'])
+  if (Object.keys(updates).length === 0) {
+    return await getRecipeById(id)
   }
   const result = await sql`
     UPDATE recipes SET ${sql(updates)} WHERE id = ${id} RETURNING *
@@ -311,7 +302,7 @@ export async function getAssignmentBySlot(householdId, date, mealType) {
 export async function createAssignment(assignment) {
   const result = await sql`
     INSERT INTO meal_assignments (id, household_id, date, meal_type, recipe_id, notes, servings, repeat_weekly, recurrence_id)
-    VALUES (${assignment.id}, ${assignment.householdId}, ${assignment.date}, ${assignment.mealType}, ${assignment.recipeId}, ${assignment.notes}, ${assignment.servings}, ${assignment.repeatWeekly || false}, ${assignment.recurrenceId})
+    VALUES (${assignment.id}, ${assignment.householdId}, ${assignment.date}, ${assignment.mealType}, ${assignment.recipeId}, ${assignment.notes || null}, ${assignment.servings || null}, ${assignment.repeatWeekly || false}, ${assignment.recurrenceId || null})
     RETURNING *
   `
   return toAssignmentObject(result[0])
@@ -321,7 +312,7 @@ export async function createAssignments(assignments) {
   if (assignments.length === 0) return []
   const result = await sql`
     INSERT INTO meal_assignments (id, household_id, date, meal_type, recipe_id, notes, servings, repeat_weekly, recurrence_id)
-    VALUES ${sql(assignments.map(a => [a.id, a.householdId, a.date, a.mealType, a.recipeId, a.notes, a.servings, a.repeatWeekly || false, a.recurrenceId]))}
+    VALUES ${sql(assignments.map(a => [a.id, a.householdId, a.date, a.mealType, a.recipeId, a.notes || null, a.servings || null, a.repeatWeekly || false, a.recurrenceId || null]))}
     RETURNING *
   `
   return result.map(toAssignmentObject)
@@ -329,7 +320,7 @@ export async function createAssignments(assignments) {
 
 export async function updateAssignment(id, fields) {
   const result = await sql`
-    UPDATE meal_assignments SET ${sql(Object.fromEntries(Object.entries(fields).map(([k, v]) => [toSnakeCase(k), v])))} WHERE id = ${id} RETURNING *
+    UPDATE meal_assignments SET ${sql(sanitizeUpdates(fields))} WHERE id = ${id} RETURNING *
   `
   return result.length > 0 ? toAssignmentObject(result[0]) : null
 }
@@ -368,7 +359,7 @@ export async function findShoppingItem(householdId, name, unit) {
 export async function createShoppingItem(item) {
   const result = await sql`
     INSERT INTO shopping_items (id, household_id, name, quantity, unit, category, checked, source_recipe_id, source_recipe_name, added_by, added_at, sync_status, generated, source_week_start)
-    VALUES (${item.id}, ${item.householdId}, ${item.name}, ${item.quantity}, ${item.unit}, ${item.category}, ${item.checked || false}, ${item.sourceRecipeId}, ${item.sourceRecipeName}, ${item.addedBy}, ${item.addedAt}, ${item.syncStatus || 'synced'}, ${item.generated}, ${item.sourceWeekStart})
+    VALUES (${item.id}, ${item.householdId}, ${item.name}, ${item.quantity || null}, ${item.unit || null}, ${item.category || 'other'}, ${item.checked || false}, ${item.sourceRecipeId || null}, ${item.sourceRecipeName || null}, ${item.addedBy || null}, ${item.addedAt}, ${item.syncStatus || 'synced'}, ${item.generated || null}, ${item.sourceWeekStart || null})
     RETURNING *
   `
   return toShoppingItemObject(result[0])
@@ -376,7 +367,7 @@ export async function createShoppingItem(item) {
 
 export async function updateShoppingItem(id, fields) {
   const result = await sql`
-    UPDATE shopping_items SET ${sql(Object.fromEntries(Object.entries(fields).map(([k, v]) => [toSnakeCase(k), v])))} WHERE id = ${id} RETURNING *
+    UPDATE shopping_items SET ${sql(sanitizeUpdates(fields))} WHERE id = ${id} RETURNING *
   `
   return result.length > 0 ? toShoppingItemObject(result[0]) : null
 }
@@ -402,7 +393,7 @@ export async function createShoppingItems(items) {
   if (items.length === 0) return []
   const result = await sql`
     INSERT INTO shopping_items (id, household_id, name, quantity, unit, category, checked, source_recipe_id, source_recipe_name, added_by, added_at, sync_status, generated, source_week_start)
-    VALUES ${sql(items.map(i => [i.id, i.householdId, i.name, i.quantity, i.unit, i.category, i.checked || false, i.sourceRecipeId, i.sourceRecipeName, i.addedBy, i.addedAt, i.syncStatus || 'synced', i.generated, i.sourceWeekStart]))}
+    VALUES ${sql(items.map(i => [i.id, i.householdId, i.name, i.quantity || null, i.unit || null, i.category || 'other', i.checked || false, i.sourceRecipeId || null, i.sourceRecipeName || null, i.addedBy || null, i.addedAt, i.syncStatus || 'synced', i.generated || null, i.sourceWeekStart || null]))}
     RETURNING *
   `
   return result.map(toShoppingItemObject)
@@ -430,7 +421,7 @@ export async function findPantryItem(householdId, name, unit) {
 export async function createPantryItem(item) {
   const result = await sql`
     INSERT INTO pantry_items (id, household_id, name, quantity, unit, category, low_stock_threshold, expires_at, updated_at)
-    VALUES (${item.id}, ${item.householdId}, ${item.name}, ${item.quantity}, ${item.unit}, ${item.category}, ${item.lowStockThreshold}, ${item.expiresAt}, ${item.updatedAt})
+    VALUES (${item.id}, ${item.householdId}, ${item.name}, ${item.quantity || null}, ${item.unit || null}, ${item.category || 'other'}, ${item.lowStockThreshold || null}, ${item.expiresAt || null}, ${item.updatedAt})
     RETURNING *
   `
   return toPantryItemObject(result[0])
@@ -438,7 +429,7 @@ export async function createPantryItem(item) {
 
 export async function updatePantryItem(id, fields) {
   const result = await sql`
-    UPDATE pantry_items SET ${sql(Object.fromEntries(Object.entries(fields).map(([k, v]) => [toSnakeCase(k), v])))} WHERE id = ${id} RETURNING *
+    UPDATE pantry_items SET ${sql(sanitizeUpdates(fields))} WHERE id = ${id} RETURNING *
   `
   return result.length > 0 ? toPantryItemObject(result[0]) : null
 }
@@ -472,7 +463,7 @@ export async function createReview(review) {
 
 export async function updateReview(id, fields) {
   const result = await sql`
-    UPDATE recipe_reviews SET ${sql(Object.fromEntries(Object.entries(fields).map(([k, v]) => [toSnakeCase(k), v])))} WHERE id = ${id} RETURNING *
+    UPDATE recipe_reviews SET ${sql(sanitizeUpdates(fields))} WHERE id = ${id} RETURNING *
   `
   return result.length > 0 ? toReviewObject(result[0]) : null
 }
@@ -512,6 +503,21 @@ export async function deleteMetaKeys(keys) {
 
 function toSnakeCase(str) {
   return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)
+}
+
+function sanitizeUpdates(fields, jsonKeys = []) {
+  const result = {}
+  for (const [key, value] of Object.entries(fields)) {
+    const col = toSnakeCase(key)
+    if (value === undefined) {
+      result[col] = null
+    } else if (jsonKeys.includes(key) || ['tags', 'ingredients', 'instructions', 'healthTargets'].includes(key)) {
+      result[col] = JSON.stringify(value)
+    } else {
+      result[col] = value
+    }
+  }
+  return result
 }
 
 function toCamelCase(str) {
