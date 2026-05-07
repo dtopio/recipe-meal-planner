@@ -99,11 +99,7 @@ router.post('/summary', requireAuth, requireHousehold, asyncHandler(async (req, 
   const weekStart = dto.weekStart || toDateKey(startOfWeek())
   const period = dto.period || 'all'
   const summary = await getShoppingSummary(req.householdId, weekStart, period)
-  sendOk(res, {
-    ...summary,
-    weekStart,
-    period,
-  })
+  sendOk(res, summary)
 }))
 
 router.patch('/:itemId', requireAuth, requireHousehold, asyncHandler(async (req, res) => {

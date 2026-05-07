@@ -509,22 +509,26 @@ export async function getShoppingSummaryInput(householdId) {
   }
 }
 
-export async function getShoppingListSummary(householdId) {
+export async function getShoppingListSummary(householdId, weekStart = '', period = 'all') {
   if (!config.openrouterApiKey) {
-    const { shoppingItems, pantryItems } = await getShoppingSummaryInput(householdId)
     return {
-      summary: `You have ${shoppingItems.length} items to buy and ${pantryItems.length} low-stock pantry items.`,
-      items: shoppingItems,
-      lowStockItems: pantryItems,
+      headline: 'Shopping Summary',
+      summary: `You have pending shopping items and low-stock pantry alerts.`,
+      alerts: [],
+      focus: [],
+      model: 'builtin',
+      generatedAt: nowIso(),
+      weekStart,
+      period,
     }
   }
 
   const input = await getShoppingSummaryInput(householdId)
-  const summary = await generateShoppingSummary(input)
+  const aiResponse = await generateShoppingSummary(input)
   return {
-    summary,
-    items: input.shoppingItems,
-    lowStockItems: input.pantryItems,
+    ...aiResponse,
+    weekStart,
+    period,
   }
 }
 
