@@ -202,18 +202,18 @@ class SqliteDatabase {
   }
 }
 
-logger.info('Database config check', {
+console.log('🔍 Database config:', {
   supabaseUrlSet: !!config.supabaseUrl,
-  supabaseUrl: config.supabaseUrl || 'NOT SET',
+  supabaseUrl: config.supabaseUrl ? '***SET***' : 'NOT SET',
   supabaseKeySet: !!config.supabaseKey,
 })
 
 let db
 if (config.supabaseUrl) {
-  logger.info('Using Supabase database', { url: config.supabaseUrl })
+  console.log('✅ Using Supabase database')
   db = new SupabaseDatabase(config.supabaseUrl, config.supabaseKey)
 } else {
-  logger.info('Using SQLite database (no SUPABASE_URL env var found)')
+  console.log('⚠️  Using SQLite database (NEXT_PUBLIC_SUPABASE_URL not found)')
   db = new SqliteDatabase()
 }
 
