@@ -7,6 +7,7 @@ export async function hashPassword(plaintext) {
 }
 
 export async function verifyPassword(plaintext, hash) {
+  if (!hash) return false
   // Support legacy plaintext passwords during migration
   if (!hash.startsWith('$2a$') && !hash.startsWith('$2b$')) {
     return plaintext === hash

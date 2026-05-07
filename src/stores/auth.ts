@@ -84,6 +84,25 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function loginWithGoogle(credential: string) {
+    loading.value = true
+    error.value = null
+    try {
+      const { data: session } = await apiClient<Session>('/auth/google', {
+        method: 'POST',
+        body: JSON.stringify({ credential }),
+      })
+
+      storeSession(session)
+      return session
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'Google sign-in failed')
+      throw new Error(error.value)
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function loadUser() {
     if (!token.value) {
       initialized.value = true
@@ -210,6 +229,7 @@ export const useAuthStore = defineStore('auth', () => {
     initials,
     initialize,
     login,
+    loginWithGoogle,
     register,
     loadUser,
     updateProfile,

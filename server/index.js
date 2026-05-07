@@ -40,10 +40,14 @@ app.use(helmet({
     ? {
         directives: {
           imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+          scriptSrc: ["'self'", "'unsafe-inline'", 'https://accounts.google.com/gsi/client'],
+          frameSrc: ["'self'", 'https://accounts.google.com/gsi/'],
+          connectSrc: ["'self'", 'https://accounts.google.com/gsi/'],
         },
       }
     : false,
   crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
   hsts: isProduction ? { maxAge: 63072000, includeSubDomains: true } : false,
 }))
 
