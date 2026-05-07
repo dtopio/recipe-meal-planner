@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import AppLayout from '@/layouts/AppLayout.vue'
 import AuthLayout from '@/layouts/AuthLayout.vue'
 import { Toaster } from 'vue-sonner'
+import 'vue-sonner/style.css'
 
 const route = useRoute()
 
