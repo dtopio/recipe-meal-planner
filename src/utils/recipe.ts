@@ -35,8 +35,8 @@ function getRecipeText(recipe: Recipe): string {
   return [
     recipe.title,
     recipe.description,
-    recipe.tags.join(' '),
-    recipe.ingredients.map(ingredient => ingredient.name).join(' '),
+    (recipe.tags ?? []).join(' '),
+    (recipe.ingredients ?? []).map(ingredient => ingredient?.name ?? '').join(' '),
   ]
     .filter(Boolean)
     .join(' ')
@@ -44,7 +44,7 @@ function getRecipeText(recipe: Recipe): string {
 }
 
 function supportsPreference(recipeText: string, recipe: Recipe, preference: DietaryPreference): boolean {
-  const tags = recipe.tags.map(tag => tag.toLowerCase())
+  const tags = (recipe.tags ?? []).map(tag => (tag ?? '').toLowerCase())
 
   switch (preference) {
     case 'vegetarian':
@@ -88,15 +88,15 @@ export function isRecipeCompatible(recipe: Recipe, preferences?: HouseholdPrefer
   return getPreferenceConflicts(recipe, preferences).length === 0
 }
 
-export function normalizeIngredientName(value: string): string {
-  return value
+export function normalizeIngredientName(value: string | undefined | null): string {
+  return (value ?? '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
 }
 
-export function ingredientMatchKey(name: string, unit = ''): string {
-  return `${normalizeIngredientName(name)}::${unit.trim().toLowerCase()}`
+export function ingredientMatchKey(name: string | undefined | null, unit: string | undefined | null = ''): string {
+  return `${normalizeIngredientName(name)}::${(unit ?? '').trim().toLowerCase()}`
 }
 
 export function getPantryCoverage(pantryItems: PantryItem[], ingredientName: string, unit: string, quantity: number) {

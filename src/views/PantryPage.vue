@@ -68,7 +68,8 @@ const plannedMealAlerts = computed(() => {
       ? slot.servings / slot.recipe.servings
       : 1
 
-    for (const ingredient of slot.recipe.ingredients) {
+    for (const ingredient of slot.recipe.ingredients ?? []) {
+      if (!ingredient?.name) continue
       const key = ingredientMatchKey(ingredient.name, ingredient.unit)
       const existing = requiredByKey.get(key)
       const mealLabel = `${slot.recipe.title} (${formatDateShort(slot.date)})`

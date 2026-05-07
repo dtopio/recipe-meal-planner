@@ -465,25 +465,35 @@ export async function buildShoppingGeneration(householdId, weekStart) {
   }
 
   const generatedItems = []
+  let mergedIngredientCount = 0
+  let pantryCoveredCount = 0
   for (const [key, ing] of Object.entries(ingredients)) {
-    if (!pantryMap.has(key)) {
-      generatedItems.push({
-        id: createId('shop'),
-        householdId,
-        name: ing.name,
-        quantity: ing.quantity,
-        unit: ing.unit,
-        category: guessShoppingCategory(ing.name),
-        checked: false,
-        generated: true,
-        sourceWeekStart: weekStart,
-        addedAt: nowIso(),
-        syncStatus: 'synced',
-      })
+    if (ing.count > 1) mergedIngredientCount += 1
+    if (pantryMap.has(key)) {
+      pantryCoveredCount += 1
+      continue
     }
+    generatedItems.push({
+      id: createId('shop'),
+      householdId,
+      name: ing.name,
+      quantity: ing.quantity,
+      unit: ing.unit,
+      category: guessShoppingCategory(ing.name),
+      checked: false,
+      generated: true,
+      sourceWeekStart: weekStart,
+      addedAt: nowIso(),
+      syncStatus: 'synced',
+    })
   }
 
-  return { generatedItems }
+  return {
+    weekStart,
+    generatedItems,
+    mergedIngredientCount,
+    pantryCoveredCount,
+  }
 }
 
 export async function getShoppingSummaryInput(householdId) {
@@ -543,33 +553,51 @@ export function filterShoppingItemsByPeriod(items, period, weekStart) {
 
 export async function getWeekNutrition(householdId, weekStartDate) {
   const slots = await getMealSlotsForWeek(householdId, weekStartDate)
-  const totals = { calories: 0, protein: 0, carbs: 0, fat: 0 }
-  const days = {}
+  const total = { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  const dayMap = new Map()
+  let plannedMealCount = 0
 
   for (const slot of slots) {
     if (!slot.recipe) continue
+    plannedMealCount += 1
     try {
       const nutrition = await getRecipeNutrition(slot.recipe)
       const multiplier = (slot.servings || slot.recipe.servings || 1) / (slot.recipe.servings || 1)
-      const scaled = scaleNutritionValues(nutrition.totals || nutrition, multiplier)
-      totals.calories += scaled.calories || 0
-      totals.protein += scaled.protein || 0
-      totals.carbs += scaled.carbs || 0
-      totals.fat += scaled.fat || 0
-      days[slot.date] = days[slot.date] || { calories: 0, protein: 0, carbs: 0, fat: 0 }
-      days[slot.date].calories += scaled.calories || 0
-      days[slot.date].protein += scaled.protein || 0
-      days[slot.date].carbs += scaled.carbs || 0
-      days[slot.date].fat += scaled.fat || 0
+      const scaled = roundNutritionTotals(scaleNutritionValues(nutrition.totals || nutrition, multiplier))
+      total.calories += scaled.calories || 0
+      total.protein += scaled.protein || 0
+      total.carbs += scaled.carbs || 0
+      total.fat += scaled.fat || 0
+
+      if (!dayMap.has(slot.date)) {
+        dayMap.set(slot.date, { date: slot.date, total: { calories: 0, protein: 0, carbs: 0, fat: 0 }, meals: [] })
+      }
+      const day = dayMap.get(slot.date)
+      day.total.calories += scaled.calories || 0
+      day.total.protein += scaled.protein || 0
+      day.total.carbs += scaled.carbs || 0
+      day.total.fat += scaled.fat || 0
+      day.meals.push({
+        slotId: slot.id,
+        mealType: slot.mealType,
+        recipeId: slot.recipeId,
+        recipeTitle: slot.recipe.title,
+        servings: slot.servings || slot.recipe.servings || 1,
+        nutrition: scaled,
+      })
     } catch (error) {
       logger.warn('Failed to compute nutrition for slot', { slotId: slot.id, error: error.message })
     }
   }
 
+  const perDay = Array.from(dayMap.values()).sort((a, b) => a.date.localeCompare(b.date))
+
   return {
     weekStart: weekStartDate,
-    totals: roundNutritionTotals(totals),
-    days,
+    plannedMealCount,
+    source: 'usda',
+    total: roundNutritionTotals(total),
+    perDay,
   }
 }
 
