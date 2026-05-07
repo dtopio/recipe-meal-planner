@@ -70,7 +70,7 @@ router.post('/register', authLimiter, asyncHandler(async (req, res) => {
   }
 
   await db.createUser(user)
-  const session = createSession(user)
+  const session = await createSession(user)
   sendOk(res, session, 'Account created')
 }))
 
@@ -82,7 +82,7 @@ router.post('/login', authLimiter, asyncHandler(async (req, res) => {
     return sendError(res, 401, 'Invalid email or password', 'INVALID_CREDENTIALS')
   }
 
-  const session = createSession(user)
+  const session = await createSession(user)
   sendOk(res, session, 'Signed in')
 }))
 

@@ -4,16 +4,26 @@ import { logger } from '../logger.js'
 let sql = null
 
 export async function connectDb(databaseUrl) {
+  if (!databaseUrl) {
+    logger.error('DATABASE_URL is not set!')
+    throw new Error('DATABASE_URL environment variable is missing')
+  }
+
+  logger.info('Attempting to connect to Postgres', { hostHint: databaseUrl.split('@')[1]?.split(':')[0] })
+
   sql = postgres(databaseUrl, {
     ssl: 'require',
-    max: 20,
+    max: 10,
+    prepare: false,
+    idle_timeout: 20,
+    connect_timeout: 10,
   })
 
   try {
-    await sql`SELECT 1`
-    logger.info('Connected to Postgres via Supabase')
+    const result = await sql`SELECT 1 AS test`
+    logger.info('Connected to Postgres via Supabase', { test: result[0]?.test })
   } catch (error) {
-    logger.error('Failed to connect to Postgres', { error: error.message })
+    logger.error('Failed to connect to Postgres', { error: error.message, code: error.code })
     throw error
   }
 }
@@ -39,12 +49,19 @@ export async function getUserByEmail(email) {
 }
 
 export async function createUser(user) {
-  const result = await sql`
-    INSERT INTO users (id, email, password, display_name, avatar_url, created_at, current_household_id, health_targets)
-    VALUES (${user.id}, ${user.email}, ${user.password}, ${user.displayName}, ${user.avatarUrl}, ${user.createdAt}, ${user.currentHouseholdId || null}, ${JSON.stringify(user.healthTargets || {})})
-    RETURNING *
-  `
-  return toUserObject(result[0])
+  try {
+    logger.info('Creating user', { id: user.id, email: user.email })
+    const result = await sql`
+      INSERT INTO users (id, email, password, display_name, avatar_url, created_at, current_household_id, health_targets)
+      VALUES (${user.id}, ${user.email}, ${user.password}, ${user.displayName}, ${user.avatarUrl || null}, ${user.createdAt}, ${user.currentHouseholdId || null}, ${JSON.stringify(user.healthTargets || {})})
+      RETURNING *
+    `
+    logger.info('User created successfully', { id: result[0]?.id })
+    return toUserObject(result[0])
+  } catch (error) {
+    logger.error('Failed to create user', { error: error.message, code: error.code, detail: error.detail })
+    throw error
+  }
 }
 
 export async function updateUser(id, fields) {
@@ -207,10 +224,10 @@ export async function getPreferences(householdId) {
 export async function upsertPreferences(householdId, fields) {
   const result = await sql`
     INSERT INTO household_preferences (household_id, dietary_preferences, meal_periods)
-    VALUES (${householdId}, ${fields.dietaryPreferences || '{}':sql.raw('\'{}\'')}, ${fields.mealPeriods || '{}':sql.raw('\'{}\'')})
+    VALUES (${householdId}, ${fields.dietaryPreferences || []}, ${fields.mealPeriods || []})
     ON CONFLICT (household_id) DO UPDATE SET
-      dietary_preferences = COALESCE(EXCLUDED.dietary_preferences, household_preferences.dietary_preferences),
-      meal_periods = COALESCE(EXCLUDED.meal_periods, household_preferences.meal_periods)
+      dietary_preferences = EXCLUDED.dietary_preferences,
+      meal_periods = EXCLUDED.meal_periods
     RETURNING *
   `
   return toPreferencesObject(result[0])
