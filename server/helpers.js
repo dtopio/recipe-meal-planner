@@ -108,18 +108,7 @@ const MAX_SESSIONS_PER_USER = 5
 
 export async function createSession(user) {
   const accessToken = `token_${randomUUID().replace(/-/g, '')}`
-  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString() // 30 days
-
-  // Cap sessions per user
-  const userSessions = await db.deleteSessionsForUser(user.id)
-  const sessions = await db.sql`SELECT * FROM sessions WHERE user_id = ${user.id} ORDER BY expires_at ASC`
-
-  if (sessions.length >= MAX_SESSIONS_PER_USER) {
-    const toRemove = sessions.slice(0, sessions.length - MAX_SESSIONS_PER_USER + 1)
-    for (const s of toRemove) {
-      await db.deleteSession(s.accessToken)
-    }
-  }
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString()
 
   const session = await db.createSession({
     accessToken,
