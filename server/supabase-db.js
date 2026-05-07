@@ -22,7 +22,13 @@ export class SupabaseDatabase {
   sessionIndex = new Map()
 
   constructor(supabaseUrl, supabaseKey) {
-    this.#supabase = createClient(supabaseUrl, supabaseKey)
+    try {
+      this.#supabase = createClient(supabaseUrl, supabaseKey)
+      logger.info('Supabase client created', { url: supabaseUrl })
+    } catch (error) {
+      logger.error('Failed to create Supabase client', { error: error.message })
+      throw error
+    }
   }
 
   async load() {

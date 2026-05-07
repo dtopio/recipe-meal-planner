@@ -202,9 +202,16 @@ class SqliteDatabase {
   }
 }
 
-export const db = config.supabaseUrl
-  ? new SupabaseDatabase(config.supabaseUrl, config.supabaseKey)
-  : new SqliteDatabase()
+let db
+if (config.supabaseUrl) {
+  logger.info('Using Supabase database', { url: config.supabaseUrl })
+  db = new SupabaseDatabase(config.supabaseUrl, config.supabaseKey)
+} else {
+  logger.info('Using SQLite database')
+  db = new SqliteDatabase()
+}
+
+export { db }
 
 function normalizeData(data) {
   return {
