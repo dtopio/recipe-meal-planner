@@ -178,7 +178,7 @@ function getProteinTone(current: number, target: number) {
   <template v-else>
     <div class="grid gap-6 lg:grid-cols-12 stagger-children">
 
-      <div class="lg:col-span-8 space-y-6">
+      <div class="lg:col-span-8 flex flex-col gap-6 h-full">
       <!-- ===== Tonight's Dinner Hero ===== -->
       <div class="surface-elevated overflow-hidden">
         <div v-if="tonightsDinner" class="flex flex-col md:flex-row">
@@ -255,7 +255,7 @@ function getProteinTone(current: number, target: number) {
       </div>
 
       <!-- ===== Weekly Preview ===== -->
-      <div class="surface-card p-5">
+      <div class="surface-card p-5 flex-1 flex flex-col">
         <div class="flex items-center justify-between mb-5">
           <h3 class="font-bold text-foreground flex items-center gap-2 tracking-tight">
             <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
