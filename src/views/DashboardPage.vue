@@ -435,8 +435,10 @@ function getProteinTone(current: number, target: number) {
             {{ weekNutritionError ? 'Nutrition data is unavailable right now.' : 'No nutrition tracked for today yet. Plan meals in your active periods to start the daily totals.' }}
           </div>
         </div>
+      </div>
 
-        <div v-if="weekNutrition" class="surface-card p-5">
+      <!-- ===== Weekly Health (full width below the two columns) ===== -->
+      <div v-if="weekNutrition" class="lg:col-span-12 surface-card p-5">
           <div class="flex items-center justify-between mb-5">
             <h3 class="font-bold text-foreground flex items-center gap-2 tracking-tight">
               <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -447,7 +449,7 @@ function getProteinTone(current: number, target: number) {
             <span class="text-[11px] font-semibold text-primary">{{ weekNutrition.source }}</span>
           </div>
 
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div class="rounded-2xl bg-muted/40 p-3">
               <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Calories</p>
               <p class="mt-1 text-2xl font-extrabold tracking-tight text-foreground">{{ weekNutrition.total.calories }}</p>
@@ -502,7 +504,7 @@ function getProteinTone(current: number, target: number) {
           </p>
         </div>
 
-        <div v-else-if="weekNutritionError" class="surface-card p-5">
+      <div v-else-if="weekNutritionError" class="lg:col-span-12 surface-card p-5">
           <div class="flex items-center justify-between mb-5">
             <h3 class="font-bold text-foreground flex items-center gap-2 tracking-tight">
               <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -516,7 +518,6 @@ function getProteinTone(current: number, target: number) {
             Nutrition data is unavailable. {{ weekNutritionError }}
           </div>
         </div>
-      </div>
 
       <!-- ===== Recent Recipes ===== -->
       <div class="lg:col-span-12">
