@@ -254,6 +254,7 @@ export interface WeeklyNutritionMeal {
 
 export interface WeeklyNutritionMissingMeal {
   slotId: string
+  date: string
   mealType: MealType
   recipeId: string
   recipeTitle: string
@@ -277,6 +278,7 @@ export interface WeeklyNutritionSummary {
   month?: string
   plannedMealCount: number
   missingNutritionCount?: number
+  missingMeals?: WeeklyNutritionMissingMeal[]
   mealTypeCounts?: Record<string, number>
   source: string
   total: NutritionTotals

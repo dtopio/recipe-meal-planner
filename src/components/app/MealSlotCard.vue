@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import type { MealSlot, MealType } from '@/types'
 import { formatMinutes } from '@/utils/date'
 import { formatMealPeriodLabel, getMealPeriodDisplay } from '@/utils/meal-periods'
-import { Clock, X, GripVertical, Minus, Plus, Loader2, RefreshCw } from 'lucide-vue-next'
+import { Clock, Copy, X, GripVertical, Minus, Plus, Loader2, RefreshCw } from 'lucide-vue-next'
 
 const props = defineProps<{
   slot: MealSlot
@@ -18,6 +18,7 @@ defineEmits<{
   decreaseServings: []
   increaseServings: []
   toggleRecurring: []
+  copy: []
 }>()
 
 const config = computed(() => getMealPeriodDisplay(props.mealType))
@@ -87,6 +88,15 @@ const currentServings = computed(() => props.slot.servings || props.slot.recipe?
           </div>
         </div>
       </div>
+
+      <button
+        type="button"
+        @click.stop="$emit('copy')"
+        class="p-1.5 rounded-lg hover:bg-primary/8 transition-all opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+        aria-label="Copy meal"
+      >
+        <Copy class="w-3.5 h-3.5 text-muted-foreground hover:text-primary" />
+      </button>
 
       <button
         type="button"

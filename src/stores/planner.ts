@@ -74,6 +74,7 @@ export const usePlannerStore = defineStore('planner', () => {
     })
 
     upsertSlot(data)
+    return data
   }
 
   async function removeMeal(slotId: string) {

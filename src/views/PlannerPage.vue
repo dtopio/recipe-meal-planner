@@ -26,11 +26,15 @@ const showRecipePanel = ref(false)
 const recipeSearch = ref('')
 const assignTarget = ref<{ date: string; mealType: MealType } | null>(null)
 const draggedRecipe = ref<Recipe | null>(null)
+const copySourceSlot = ref<MealSlot | null>(null)
 
 const filteredRecipes = computed(() => {
-  if (!recipeSearch.value) return recipes.recipes
   const q = recipeSearch.value.toLowerCase()
-  return recipes.recipes.filter(recipe => recipe.title.toLowerCase().includes(q))
+  const source = q
+    ? recipes.recipes.filter(recipe => recipe.title.toLowerCase().includes(q))
+    : recipes.recipes
+
+  return sortRecipesByCreatedAt(source)
 })
 
 const mealTypes = computed(() => getMealPeriods(household.preferences))
@@ -80,7 +84,12 @@ function onDragEnd() {
   draggedRecipe.value = null
 }
 
-function openAssignPanel(date: string, mealType: MealType) {
+async function openAssignPanel(date: string, mealType: MealType) {
+  if (copySourceSlot.value?.recipe) {
+    await copyMealToSlot(date, mealType)
+    return
+  }
+
   assignTarget.value = { date, mealType }
   showRecipePanel.value = true
 }
@@ -104,6 +113,43 @@ function getMealSlots(date: string, mealType: MealType): MealSlot[] {
 function openRecipe(slot: MealSlot) {
   if (!slot.recipeId) return
   router.push(`/recipes/${slot.recipeId}`)
+}
+
+function handleStartCopy(slot: MealSlot) {
+  if (!slot.recipe) return
+
+  copySourceSlot.value = slot
+  assignTarget.value = null
+  showRecipePanel.value = false
+  toast('Choose another day or slot to copy this meal into')
+}
+
+function cancelCopyMeal() {
+  copySourceSlot.value = null
+}
+
+async function copyMealToSlot(date: string, mealType: MealType) {
+  const source = copySourceSlot.value
+  if (!source?.recipe) return
+
+  if (source.date === date && source.mealType === mealType) {
+    toast('Choose a different slot for the copied meal')
+    return
+  }
+
+  try {
+    const copiedSlot = await planner.assignMeal(date, mealType, source.recipe)
+    const sourceServings = source.servings || source.recipe.servings || 1
+
+    if ((copiedSlot.servings || copiedSlot.recipe?.servings || 1) !== sourceServings) {
+      await planner.updateMealServings(copiedSlot.id, sourceServings)
+    }
+
+    copySourceSlot.value = null
+    toast.success(`Copied ${source.recipe.title}`)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to copy meal')
+  }
 }
 
 async function handleRemoveMeal(slotId: string) {
@@ -189,6 +235,10 @@ async function handleGenerateShoppingList() {
     toast.error(error instanceof Error ? error.message : 'Failed to generate shopping list')
   }
 }
+
+function sortRecipesByCreatedAt(items: Recipe[]) {
+  return [...items].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+}
 </script>
 
 <template>
@@ -231,6 +281,19 @@ async function handleGenerateShoppingList() {
   </div>
 
   <template v-else>
+    <div
+      v-if="copySourceSlot?.recipe"
+      class="mb-4 flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/[0.04] p-4 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div class="min-w-0">
+        <p class="text-sm font-bold text-foreground">Copying {{ copySourceSlot.recipe.title }}</p>
+        <p class="text-xs text-muted-foreground">Choose an add slot on another day to place the copied meal.</p>
+      </div>
+      <Button variant="outline" size="sm" class="shrink-0" @click="cancelCopyMeal">
+        Cancel
+      </Button>
+    </div>
+
     <div class="flex gap-6">
       <div class="flex-1 min-w-0">
         <div class="hidden lg:block">
@@ -292,6 +355,7 @@ async function handleGenerateShoppingList() {
                       @decrease-servings="handleChangeServings(slot, -1)"
                       @increase-servings="handleChangeServings(slot, 1)"
                       @toggle-recurring="handleToggleRecurring(slot)"
+                      @copy="handleStartCopy(slot)"
                     />
                   </div>
 
@@ -301,7 +365,7 @@ async function handleGenerateShoppingList() {
                     class="flex items-center justify-center rounded-lg border border-dashed border-border/40 px-2 py-2 text-[11px] font-semibold text-muted-foreground/40 transition-all hover:border-primary/30 hover:bg-primary/[0.04] hover:text-primary mt-auto"
                     @click="openAssignPanel(date, mealType)"
                   >
-                    + Add
+                    {{ copySourceSlot ? '+ Copy here' : '+ Add' }}
                   </button>
                 </div>
               </div>
@@ -356,6 +420,7 @@ async function handleGenerateShoppingList() {
                         @decrease-servings="handleChangeServings(slot, -1)"
                         @increase-servings="handleChangeServings(slot, 1)"
                         @toggle-recurring="handleToggleRecurring(slot)"
+                        @copy="handleStartCopy(slot)"
                       />
 
                       <button
@@ -363,7 +428,7 @@ async function handleGenerateShoppingList() {
                         class="flex min-h-[48px] w-full items-center justify-center rounded-xl border border-dashed border-border/60 px-3 py-3 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/[0.03] hover:text-primary"
                         @click="openAssignPanel(date, mealType)"
                       >
-                        Add {{ formatMealPeriodLabel(mealType).toLowerCase() }}
+                        {{ copySourceSlot ? 'Copy here' : `Add ${formatMealPeriodLabel(mealType).toLowerCase()}` }}
                       </button>
                     </div>
                   </div>
