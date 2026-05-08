@@ -203,6 +203,12 @@ const reportDescription = computed(() => {
   if (reportMode.value === 'month') return formatMonthLabel(selectedMonth.value)
   return `Week of ${formatDateShort(planner.currentWeekStart)} - ${formatDateShort(addDays(planner.currentWeekStart, 6))}`
 })
+const calorieReportTargetLabel = computed(() => {
+  if (reportMode.value === 'day') return `Target: ${healthTargets.value.calories} cal/day`
+  if (reportMode.value === 'week') return `Weekly target: ${periodTargets.value.calories} cal`
+  return `Monthly target: ${periodTargets.value.calories} cal`
+})
+const dailyCalorieTargetLineLabel = computed(() => `Daily target line: ${healthTargets.value.calories} cal/day`)
 
 onMounted(async () => {
   await Promise.all([
@@ -596,7 +602,7 @@ function formatDateLong(dateKey: string) {
             {{ reportMode === 'day' ? 'Daily Meal Calories' : reportMode === 'month' ? 'Monthly Calories by Day' : 'Daily Calories' }}
           </h3>
 
-          <div class="grid gap-2 text-sm sm:grid-cols-3 lg:min-w-[520px]">
+          <div class="grid gap-2 text-sm sm:grid-cols-2 lg:min-w-[640px] lg:grid-cols-4">
             <div class="rounded-xl bg-muted/40 px-3.5 py-3">
               <p class="text-[11px] font-semibold uppercase text-muted-foreground">Total</p>
               <p class="mt-1 font-extrabold text-foreground">{{ reportNutrition?.total.calories || 0 }} cal</p>
@@ -606,6 +612,10 @@ function formatDateLong(dateKey: string) {
               <p class="mt-1 font-extrabold" :class="getNutrientTone(averageDailyCalories, healthTargets.calories)">
                 {{ averageDailyCalories }} cal
               </p>
+            </div>
+            <div class="rounded-xl bg-muted/40 px-3.5 py-3">
+              <p class="text-[11px] font-semibold uppercase text-muted-foreground">Target</p>
+              <p class="mt-1 font-extrabold text-foreground">{{ calorieReportTargetLabel }}</p>
             </div>
             <div class="rounded-xl bg-muted/40 px-3.5 py-3">
               <p class="text-[11px] font-semibold uppercase text-muted-foreground">Manual Data</p>
@@ -638,7 +648,7 @@ function formatDateLong(dateKey: string) {
                   <p class="font-bold" :class="getNutrientTone(reportNutrition?.total.calories || 0, healthTargets.calories)">
                     {{ getProgress(reportNutrition?.total.calories || 0, healthTargets.calories) }}%
                   </p>
-                  <p class="text-xs text-muted-foreground">of {{ healthTargets.calories }} cal</p>
+                  <p class="text-xs text-muted-foreground">{{ calorieReportTargetLabel }}</p>
                 </div>
               </div>
               <Progress :model-value="getProgress(reportNutrition?.total.calories || 0, healthTargets.calories)" class="mt-4 h-3 rounded-full" />
@@ -713,7 +723,7 @@ function formatDateLong(dateKey: string) {
                   class="absolute left-3 right-3 z-0 border-t border-dashed border-primary/50"
                   :style="{ bottom: calorieTargetLineBottom }"
                 >
-                  <span class="absolute -top-3 right-0 rounded-full bg-background px-2 text-[10px] font-bold text-primary shadow-sm">target</span>
+                  <span class="absolute -top-3 right-0 rounded-full bg-background px-2 text-[10px] font-bold text-primary shadow-sm">daily target</span>
                 </div>
 
                 <div class="relative z-10 flex h-full items-end gap-1.5 sm:gap-2">
@@ -727,7 +737,7 @@ function formatDateLong(dateKey: string) {
                         <div class="absolute -top-12 left-1/2 z-20 hidden -translate-x-1/2 whitespace-nowrap rounded-lg border border-border/50 bg-card px-2.5 py-1.5 text-xs font-semibold text-foreground shadow-lg group-hover:block">
                           {{ day.calories }} cal
                           <span class="block text-[10px] text-muted-foreground">
-                            {{ formatSignedNumber(getCalorieDelta(day)) }} vs target
+                            {{ formatSignedNumber(getCalorieDelta(day)) }} vs daily target
                           </span>
                         </div>
                       </div>
@@ -768,7 +778,7 @@ function formatDateLong(dateKey: string) {
 
             <div class="mt-4 flex items-center gap-2">
               <div class="h-px flex-1 border-t-2 border-dashed border-primary/30" />
-              <span class="text-[11px] font-semibold text-primary/60">Daily target: {{ healthTargets.calories }} cal</span>
+              <span class="text-[11px] font-semibold text-primary/60">{{ dailyCalorieTargetLineLabel }}</span>
               <div class="h-px flex-1 border-t-2 border-dashed border-primary/30" />
             </div>
 
