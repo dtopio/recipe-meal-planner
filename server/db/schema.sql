@@ -59,12 +59,21 @@ CREATE TABLE IF NOT EXISTS recipes (
   tags TEXT[] NOT NULL DEFAULT '{}',
   ingredients JSONB NOT NULL DEFAULT '[]',
   instructions TEXT[] NOT NULL DEFAULT '{}',
+  calories NUMERIC,
+  protein NUMERIC,
+  carbs NUMERIC,
+  fat NUMERIC,
   source_url TEXT,
   credits TEXT,
   created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS calories NUMERIC;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS protein NUMERIC;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS carbs NUMERIC;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS fat NUMERIC;
 
 CREATE TABLE IF NOT EXISTS meal_assignments (
   id TEXT PRIMARY KEY,
@@ -77,6 +86,9 @@ CREATE TABLE IF NOT EXISTS meal_assignments (
   repeat_weekly BOOLEAN NOT NULL DEFAULT FALSE,
   recurrence_id TEXT
 );
+
+CREATE INDEX IF NOT EXISTS idx_meal_assignments_household_date ON meal_assignments (household_id, date);
+CREATE INDEX IF NOT EXISTS idx_recipes_household ON recipes (household_id);
 
 CREATE TABLE IF NOT EXISTS shopping_items (
   id TEXT PRIMARY KEY,

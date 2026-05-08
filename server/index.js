@@ -107,6 +107,32 @@ app.use((error, req, res, _next) => {
     return sendError(res, 400, error.issues[0]?.message || 'Invalid request', 'VALIDATION_ERROR')
   }
 
+  if (
+    error?.code === 'NUTRITION_NOT_CONFIGURED'
+  ) {
+    return sendError(
+      res,
+      503,
+      'Recipe nutrition is not set and nutrition lookup is not configured.',
+      'NUTRITION_NOT_CONFIGURED'
+    )
+  }
+
+  if (
+    error?.code === 'NUTRITION_PROVIDER_FAILED' ||
+    error?.code === 'NUTRITION_PROVIDER_TIMEOUT' ||
+    error?.name === 'AbortError' ||
+    error?.name === 'TimeoutError' ||
+    (error?.name === 'TypeError' && /fetch/i.test(error.message || ''))
+  ) {
+    return sendError(
+      res,
+      502,
+      'Nutrition lookup failed. Check the USDA API key or try again later.',
+      'NUTRITION_LOOKUP_FAILED'
+    )
+  }
+
   logger.error('Unhandled error', {
     requestId: req.requestId,
     error: error.message,

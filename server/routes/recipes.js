@@ -35,6 +35,12 @@ const createRecipeSchema = z.object({
     name: z.string().trim().min(1).max(100),
   })).min(1).max(100),
   instructions: z.array(z.string().trim().min(1).max(2000)).min(1).max(50),
+  nutrition: z.object({
+    calories: z.number().nonnegative().max(200000).optional(),
+    protein: z.number().nonnegative().max(10000).optional(),
+    carbs: z.number().nonnegative().max(10000).optional(),
+    fat: z.number().nonnegative().max(10000).optional(),
+  }).nullable().optional(),
 })
 
 const updateRecipeSchema = createRecipeSchema.partial()
@@ -72,10 +78,6 @@ router.get('/:recipeId/nutrition', requireAuth, requireHousehold, asyncHandler(a
 
   if (!recipe) {
     return sendError(res, 404, 'Recipe not found', 'RECIPE_NOT_FOUND')
-  }
-
-  if (!config.usdaApiKey) {
-    return sendError(res, 503, 'USDA nutrition support is not configured', 'INTEGRATION_NOT_CONFIGURED')
   }
 
   const nutrition = await getRecipeNutrition(recipe)
@@ -130,6 +132,7 @@ router.post('/', requireAuth, requireHousehold, asyncHandler(async (req, res) =>
       name: ingredient.name,
     })),
     instructions: dto.instructions.map(step => step.trim()),
+    nutrition: normalizeNutritionInput(dto.nutrition),
     sourceUrl: undefined,
     credits: undefined,
     createdBy: req.auth.user.id,
@@ -167,6 +170,13 @@ router.patch('/:recipeId', requireAuth, requireHousehold, asyncHandler(async (re
   }
   if (dto.instructions !== undefined) {
     updates.instructions = dto.instructions.map(step => step.trim())
+  }
+  if (dto.nutrition !== undefined) {
+    const nutrition = normalizeNutritionInput(dto.nutrition)
+    updates.calories = nutrition ? nutrition.calories : null
+    updates.protein = nutrition ? nutrition.protein : null
+    updates.carbs = nutrition ? nutrition.carbs : null
+    updates.fat = nutrition ? nutrition.fat : null
   }
 
   updates.updatedAt = nowIso()
@@ -294,3 +304,19 @@ router.post('/import', requireAuth, requireHousehold, asyncHandler(async (req, r
 }))
 
 export default router
+
+function normalizeNutritionInput(nutrition) {
+  if (!nutrition) {
+    return null
+  }
+
+  const normalized = {
+    calories: Number(nutrition.calories || 0),
+    protein: Number(nutrition.protein || 0),
+    carbs: Number(nutrition.carbs || 0),
+    fat: Number(nutrition.fat || 0),
+  }
+
+  const hasNutrition = Object.values(normalized).some(value => Number.isFinite(value) && value > 0)
+  return hasNutrition ? normalized : null
+}

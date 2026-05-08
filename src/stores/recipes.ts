@@ -100,6 +100,7 @@ export const useRecipeStore = defineStore('recipes', () => {
           tags: dto.tags,
           ingredients: dto.ingredients,
           instructions: dto.instructions,
+          nutrition: dto.nutrition,
         }),
       })
 

@@ -40,8 +40,26 @@ function loadEnvFile(filePath) {
 export const config = {
   appUrl: process.env.APP_URL || 'http://localhost:3000',
   databaseUrl: process.env.DATABASE_URL || '',
-  usdaApiKey: process.env.USDA_API_KEY || '',
-  openrouterApiKey: process.env.OPENROUTER_API_KEY || '',
+  usdaApiKey: optionalSecret('USDA_API_KEY'),
+  openrouterApiKey: optionalSecret('OPENROUTER_API_KEY'),
   openrouterModel: process.env.OPENROUTER_MODEL || 'qwen/qwen3.6-plus:free',
   googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+}
+
+function optionalSecret(name) {
+  const value = process.env[name]?.trim() || ''
+  if (!value) {
+    return ''
+  }
+
+  const normalized = value.toLowerCase()
+  if (
+    normalized.startsWith('your-') ||
+    normalized.startsWith('replace-') ||
+    normalized.includes('placeholder')
+  ) {
+    return ''
+  }
+
+  return value
 }
