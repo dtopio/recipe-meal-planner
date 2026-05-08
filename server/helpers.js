@@ -261,19 +261,69 @@ export function mergeNutritionValues(left, right) {
 }
 
 export async function getRecipeNutrition(recipe) {
+  if (recipe.nutrition) {
+    return createManualNutritionSummary(recipe)
+  }
+
   if (!config.usdaApiKey) {
-    throw new Error('USDA nutrition support is not configured')
+    const error = new Error('Recipe nutrition is not set and USDA nutrition support is not configured')
+    error.code = 'NUTRITION_NOT_CONFIGURED'
+    throw error
   }
 
   const cacheKey = getRecipeCacheKey(recipe)
   const cached = await db.getMetaValue('nutritionCache:' + cacheKey)
-  if (cached && cached.perServing && cached.total) {
+  if (cached && cached.perServing && cached.total && !isEmptyNutritionEstimate(cached)) {
     return cached
   }
 
   const nutrition = await estimateRecipeNutrition(recipe)
   await db.setMetaValue('nutritionCache:' + cacheKey, nutrition)
   return nutrition
+}
+
+function createManualNutritionSummary(recipe) {
+  const total = normalizeNutritionTotals(recipe.nutrition)
+  const servings = Math.max(recipe.servings || 1, 1)
+
+  return {
+    recipeId: recipe.id,
+    recipeTitle: recipe.title,
+    servings,
+    source: 'Manual',
+    estimatedAt: recipe.updatedAt || nowIso(),
+    total,
+    perServing: {
+      calories: roundNutrition(total.calories / servings),
+      protein: roundNutrition(total.protein / servings),
+      carbs: roundNutrition(total.carbs / servings),
+      fat: roundNutrition(total.fat / servings),
+    },
+    ingredients: [],
+  }
+}
+
+function normalizeNutritionTotals(value = {}) {
+  return {
+    calories: Number(value.calories || 0),
+    protein: Number(value.protein || 0),
+    carbs: Number(value.carbs || 0),
+    fat: Number(value.fat || 0),
+  }
+}
+
+function isEmptyNutritionEstimate(summary) {
+  const total = summary?.total
+  if (!total) return false
+
+  const hasAnyNutrition = ['calories', 'protein', 'carbs', 'fat']
+    .some(key => Number(total[key] || 0) > 0)
+  if (hasAnyNutrition) return false
+
+  const ingredients = Array.isArray(summary.ingredients) ? summary.ingredients : []
+  return ingredients.length > 0 && ingredients.every(ingredient =>
+    !ingredient.matchedFood && Number(ingredient.estimatedWeightGrams || 0) === 0
+  )
 }
 
 // ── AI helpers ──────────────────────────────────────────────────
@@ -321,6 +371,10 @@ export async function getRecipeAiAsk(recipe, question) {
 
 export async function getMealSlotsForWeek(householdId, startDate) {
   const endDate = addDays(startDate, 7)
+  return getMealSlotsForRange(householdId, startDate, endDate)
+}
+
+export async function getMealSlotsForRange(householdId, startDate, endDate) {
   const assignments = await db.getAssignmentsByWeek(householdId, startDate, endDate)
   const recipes = await db.getRecipesByHousehold(householdId)
   const recipeMap = new Map(recipes.map(r => [r.id, r]))
@@ -555,28 +609,53 @@ export function filterShoppingItemsByPeriod(items, period, weekStart) {
   })
 }
 
-export async function getWeekNutrition(householdId, weekStartDate) {
-  const slots = await getMealSlotsForWeek(householdId, weekStartDate)
+export async function getPeriodNutrition(householdId, {
+  period = 'week',
+  startDate,
+  endDate,
+  weekStart = '',
+  month = '',
+}) {
+  const slots = await getMealSlotsForRange(householdId, startDate, endDate)
   const total = { calories: 0, protein: 0, carbs: 0, fat: 0 }
   const dayMap = new Map()
+  const mealTypeCounts = {}
   let plannedMealCount = 0
+  let missingNutritionCount = 0
+  const nutritionSources = new Set()
 
   for (const slot of slots) {
     if (!slot.recipe) continue
     plannedMealCount += 1
+    mealTypeCounts[slot.mealType] = (mealTypeCounts[slot.mealType] || 0) + 1
+
+    if (!dayMap.has(slot.date)) {
+      dayMap.set(slot.date, {
+        date: slot.date,
+        total: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+        meals: [],
+        missingMeals: [],
+        plannedMealCount: 0,
+        missingNutritionCount: 0,
+      })
+    }
+    const day = dayMap.get(slot.date)
+    day.plannedMealCount += 1
+
     try {
       const nutrition = await getRecipeNutrition(slot.recipe)
+      nutritionSources.add(nutrition.source)
+      const recipeTotal = nutrition.total || nutrition.totals
+      if (!recipeTotal) {
+        throw new Error('Nutrition estimate did not include totals')
+      }
       const multiplier = (slot.servings || slot.recipe.servings || 1) / (slot.recipe.servings || 1)
-      const scaled = roundNutritionTotals(scaleNutritionValues(nutrition.totals || nutrition, multiplier))
+      const scaled = roundNutritionTotals(scaleNutritionValues(recipeTotal, multiplier))
       total.calories += scaled.calories || 0
       total.protein += scaled.protein || 0
       total.carbs += scaled.carbs || 0
       total.fat += scaled.fat || 0
 
-      if (!dayMap.has(slot.date)) {
-        dayMap.set(slot.date, { date: slot.date, total: { calories: 0, protein: 0, carbs: 0, fat: 0 }, meals: [] })
-      }
-      const day = dayMap.get(slot.date)
       day.total.calories += scaled.calories || 0
       day.total.protein += scaled.protein || 0
       day.total.carbs += scaled.carbs || 0
@@ -590,6 +669,15 @@ export async function getWeekNutrition(householdId, weekStartDate) {
         nutrition: scaled,
       })
     } catch (error) {
+      missingNutritionCount += 1
+      day.missingNutritionCount += 1
+      day.missingMeals.push({
+        slotId: slot.id,
+        mealType: slot.mealType,
+        recipeId: slot.recipeId,
+        recipeTitle: slot.recipe.title,
+        servings: slot.servings || slot.recipe.servings || 1,
+      })
       logger.warn('Failed to compute nutrition for slot', { slotId: slot.id, error: error.message })
     }
   }
@@ -597,12 +685,30 @@ export async function getWeekNutrition(householdId, weekStartDate) {
   const perDay = Array.from(dayMap.values()).sort((a, b) => a.date.localeCompare(b.date))
 
   return {
-    weekStart: weekStartDate,
+    period,
+    startDate,
+    endDate,
+    weekStart: weekStart || (period === 'week' ? startDate : undefined),
+    month: month || undefined,
     plannedMealCount,
-    source: 'usda',
+    missingNutritionCount,
+    mealTypeCounts,
+    source: nutritionSources.size > 0 ? Array.from(nutritionSources).join(' + ') : 'Recipe nutrition',
     total: roundNutritionTotals(total),
-    perDay,
+    perDay: perDay.map(day => ({
+      ...day,
+      total: roundNutritionTotals(day.total),
+    })),
   }
+}
+
+export async function getWeekNutrition(householdId, weekStartDate) {
+  return getPeriodNutrition(householdId, {
+    period: 'week',
+    startDate: weekStartDate,
+    endDate: addDays(weekStartDate, 7),
+    weekStart: weekStartDate,
+  })
 }
 
 function roundNutritionTotals(totals) {

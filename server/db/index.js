@@ -22,10 +22,20 @@ export async function connectDb(databaseUrl) {
   try {
     const result = await sql`SELECT 1 AS test`
     logger.info('Connected to Postgres via Supabase', { test: result[0]?.test })
+    await ensureSchema()
   } catch (error) {
     logger.error('Failed to connect to Postgres', { error: error.message, code: error.code })
     throw error
   }
+}
+
+async function ensureSchema() {
+  await sql`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS calories NUMERIC`
+  await sql`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS protein NUMERIC`
+  await sql`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS carbs NUMERIC`
+  await sql`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS fat NUMERIC`
+  await sql`CREATE INDEX IF NOT EXISTS idx_meal_assignments_household_date ON meal_assignments (household_id, date)`
+  await sql`CREATE INDEX IF NOT EXISTS idx_recipes_household ON recipes (household_id)`
 }
 
 export async function closeDb() {
@@ -254,8 +264,8 @@ export async function getRecipeBySourceUrl(householdId, sourceUrl) {
 
 export async function createRecipe(recipe) {
   const result = await sql`
-    INSERT INTO recipes (id, household_id, title, description, image_url, prep_time, cook_time, servings, tags, ingredients, instructions, source_url, credits, created_by, created_at, updated_at)
-    VALUES (${recipe.id}, ${recipe.householdId}, ${recipe.title}, ${recipe.description || null}, ${recipe.imageUrl || null}, ${recipe.prepTime || null}, ${recipe.cookTime || null}, ${recipe.servings || null}, ${recipe.tags || []}, ${JSON.stringify(recipe.ingredients || [])}, ${recipe.instructions || []}, ${recipe.sourceUrl || null}, ${recipe.credits || null}, ${recipe.createdBy || null}, ${recipe.createdAt}, ${recipe.updatedAt})
+    INSERT INTO recipes (id, household_id, title, description, image_url, prep_time, cook_time, servings, tags, ingredients, instructions, calories, protein, carbs, fat, source_url, credits, created_by, created_at, updated_at)
+    VALUES (${recipe.id}, ${recipe.householdId}, ${recipe.title}, ${recipe.description || null}, ${recipe.imageUrl || null}, ${recipe.prepTime || null}, ${recipe.cookTime || null}, ${recipe.servings || null}, ${recipe.tags || []}, ${JSON.stringify(recipe.ingredients || [])}, ${recipe.instructions || []}, ${recipe.nutrition?.calories ?? null}, ${recipe.nutrition?.protein ?? null}, ${recipe.nutrition?.carbs ?? null}, ${recipe.nutrition?.fat ?? null}, ${recipe.sourceUrl || null}, ${recipe.credits || null}, ${recipe.createdBy || null}, ${recipe.createdAt}, ${recipe.updatedAt})
     RETURNING *
   `
   return toRecipeObject(result[0])
@@ -640,6 +650,8 @@ function toRecipeObject(row) {
     return Array.isArray(value) ? value : []
   }
 
+  const nutrition = readRecipeNutrition(row)
+
   return {
     id: row.id,
     householdId: row.household_id,
@@ -652,11 +664,33 @@ function toRecipeObject(row) {
     tags: parseArray(row.tags),
     ingredients: parseJsonb(row.ingredients),
     instructions: parseArray(row.instructions),
+    nutrition,
     sourceUrl: row.source_url,
     credits: row.credits,
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  }
+}
+
+function readRecipeNutrition(row) {
+  const values = {
+    calories: row.calories,
+    protein: row.protein,
+    carbs: row.carbs,
+    fat: row.fat,
+  }
+
+  const hasNutrition = Object.values(values).some(value => Number(value || 0) > 0)
+  if (!hasNutrition) {
+    return null
+  }
+
+  return {
+    calories: Number(values.calories || 0),
+    protein: Number(values.protein || 0),
+    carbs: Number(values.carbs || 0),
+    fat: Number(values.fat || 0),
   }
 }
 

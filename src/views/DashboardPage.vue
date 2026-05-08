@@ -54,6 +54,7 @@ const upcomingMeals = computed(() => {
 const recentRecipes = computed(() => recipes.recipes.slice(0, 4))
 const lowStockPreview = computed(() => pantry.lowStockItems.slice(0, 3))
 const weekNutrition = computed(() => insights.weekNutritionByStart[planner.currentWeekStart] || null)
+const weekNutritionError = computed(() => insights.weekNutritionErrors[planner.currentWeekStart] || null)
 const healthTargets = computed(() => auth.user?.healthTargets || DEFAULT_HEALTH_TARGETS)
 const todayDateKey = computed(() => getTodayDateKey())
 const todayNutrition = computed(() => (
@@ -83,6 +84,10 @@ const healthAlerts = computed(() => {
   }
 
   if (weekly) {
+    if (weekNutrition.value?.missingNutritionCount) {
+      alerts.push(`${weekNutrition.value.missingNutritionCount} planned meals are missing nutrition.`)
+    }
+
     if (weekly.protein < weeklyTargets.value.protein * 0.7) {
       alerts.push('Weekly protein is off pace.')
     }
@@ -115,9 +120,9 @@ onMounted(async () => {
 
   if (planner.currentWeekStart) {
     try {
-      await insights.loadWeekNutrition(planner.currentWeekStart)
+      await insights.loadWeekNutrition(planner.currentWeekStart, true)
     } catch {
-      // leave card hidden if unavailable
+      // surfaced through the insights error state
     }
   }
 })
@@ -369,7 +374,7 @@ function getProteinTone(current: number, target: number) {
           </div>
 
           <div v-else class="rounded-xl border border-border/60 bg-muted/30 px-3.5 py-3 text-sm text-muted-foreground">
-            No nutrition tracked for today yet. Plan meals in your active periods to start the daily totals.
+            {{ weekNutritionError ? 'Nutrition data is unavailable right now.' : 'No nutrition tracked for today yet. Plan meals in your active periods to start the daily totals.' }}
           </div>
         </div>
 
@@ -381,7 +386,7 @@ function getProteinTone(current: number, target: number) {
               </div>
               Weekly Health
             </h3>
-            <span class="text-[11px] font-semibold text-primary">USDA</span>
+            <span class="text-[11px] font-semibold text-primary">{{ weekNutrition.source }}</span>
           </div>
 
           <div class="grid grid-cols-2 gap-3">
@@ -437,6 +442,21 @@ function getProteinTone(current: number, target: number) {
           <p class="mt-4 text-sm text-muted-foreground">
             {{ weekNutrition.plannedMealCount }} planned meals in the current week.
           </p>
+        </div>
+
+        <div v-else-if="weekNutritionError" class="surface-card p-5">
+          <div class="flex items-center justify-between mb-5">
+            <h3 class="font-bold text-foreground flex items-center gap-2 tracking-tight">
+              <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Activity class="w-4 h-4 text-primary" />
+              </div>
+              Weekly Health
+            </h3>
+          </div>
+
+          <div class="rounded-xl border border-amber-500/20 bg-amber-500/8 p-4 text-sm text-foreground">
+            Nutrition data is unavailable. {{ weekNutritionError }}
+          </div>
         </div>
       </div>
 

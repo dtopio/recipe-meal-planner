@@ -514,7 +514,7 @@ function handleDelete() {
         <div class="lg:col-span-2 surface-card p-5 lg:p-6">
           <div class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-bold tracking-tight text-foreground">Nutrition Estimate</h2>
-            <span class="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold text-primary">USDA</span>
+            <span class="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold text-primary">{{ nutrition?.source || 'Nutrition' }}</span>
           </div>
 
           <div v-if="nutritionLoading" class="space-y-3">

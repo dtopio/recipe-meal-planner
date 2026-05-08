@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { config } from '../config.js'
 import { createId, normalizeMealPeriodName, startOfWeek, toDateKey } from '../utils.js'
 import {
   sendOk,
@@ -12,6 +11,7 @@ import {
   requireHousehold,
   getHouseholdPreferences,
   getMealSlotsForWeek,
+  getPeriodNutrition,
   getWeekNutrition,
 } from '../helpers.js'
 import * as db from '../db/index.js'
@@ -41,6 +41,13 @@ const plannerWeekActionSchema = z.object({
   weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
 
+const nutritionQuerySchema = z.object({
+  period: z.enum(['day', 'week', 'month']).optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+})
+
 router.get('/', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
   const weekStartDate = typeof req.query.weekStart === 'string' && req.query.weekStart
     ? req.query.weekStart
@@ -57,14 +64,31 @@ router.get('/', requireAuth, requireHousehold, asyncHandler(async (req, res) => 
 }))
 
 router.get('/nutrition', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
-  const weekStartDate = typeof req.query.weekStart === 'string' && req.query.weekStart
-    ? req.query.weekStart
-    : toDateKey(startOfWeek())
+  const query = nutritionQuerySchema.parse(req.query)
+  const period = query.period || 'week'
 
-  if (!config.usdaApiKey) {
-    return sendError(res, 503, 'USDA nutrition support is not configured', 'INTEGRATION_NOT_CONFIGURED')
+  if (period === 'day') {
+    const date = query.date || toDateKey(new Date())
+    const summary = await getPeriodNutrition(req.householdId, {
+      period,
+      startDate: date,
+      endDate: addDaysToDateKey(date, 1),
+    })
+    return sendOk(res, summary)
   }
 
+  if (period === 'month') {
+    const { startDate, endDate, month } = getMonthRange(query.month)
+    const summary = await getPeriodNutrition(req.householdId, {
+      period,
+      startDate,
+      endDate,
+      month,
+    })
+    return sendOk(res, summary)
+  }
+
+  const weekStartDate = query.weekStart || toDateKey(startOfWeek())
   const summary = await getWeekNutrition(req.householdId, weekStartDate)
   sendOk(res, summary)
 }))
@@ -75,6 +99,27 @@ router.post('/copy-last-week', requireAuth, requireHousehold, asyncHandler(async
   const summary = await copyWeekPlan(req.householdId, weekStart)
   sendOk(res, summary, 'Last week copied into planner')
 }))
+
+function addDaysToDateKey(dateKey, days) {
+  const date = new Date(`${dateKey}T00:00:00`)
+  date.setDate(date.getDate() + days)
+  return toDateKey(date)
+}
+
+function getMonthRange(monthKey) {
+  const now = new Date()
+  const [year, month] = (monthKey || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
+    .split('-')
+    .map(Number)
+  const start = new Date(year, month - 1, 1)
+  const end = new Date(year, month, 1)
+
+  return {
+    month: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`,
+    startDate: toDateKey(start),
+    endDate: toDateKey(end),
+  }
+}
 
 router.post('/apply-recurring', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
   const dto = plannerWeekActionSchema.parse(req.body || {})

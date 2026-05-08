@@ -83,6 +83,7 @@ export interface Recipe {
   tags: string[]
   ingredients: RecipeIngredient[]
   instructions: string[]
+  nutrition?: NutritionTotals | null
   sourceUrl?: string
   credits?: string
   createdBy: string
@@ -177,6 +178,7 @@ export interface CreateRecipeDTO {
   tags: string[]
   ingredients: Omit<RecipeIngredient, 'id'>[]
   instructions: string[]
+  nutrition?: NutritionTotals | null
 }
 
 export interface UpdateRecipeDTO extends Partial<CreateRecipeDTO> {
@@ -250,15 +252,32 @@ export interface WeeklyNutritionMeal {
   nutrition: NutritionTotals
 }
 
+export interface WeeklyNutritionMissingMeal {
+  slotId: string
+  mealType: MealType
+  recipeId: string
+  recipeTitle: string
+  servings: number
+}
+
 export interface WeeklyNutritionDay {
   date: string
   total: NutritionTotals
   meals: WeeklyNutritionMeal[]
+  missingMeals?: WeeklyNutritionMissingMeal[]
+  plannedMealCount?: number
+  missingNutritionCount?: number
 }
 
 export interface WeeklyNutritionSummary {
-  weekStart: string
+  period?: 'day' | 'week' | 'month'
+  startDate?: string
+  endDate?: string
+  weekStart?: string
+  month?: string
   plannedMealCount: number
+  missingNutritionCount?: number
+  mealTypeCounts?: Record<string, number>
   source: string
   total: NutritionTotals
   perDay: WeeklyNutritionDay[]

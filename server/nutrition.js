@@ -4,6 +4,29 @@ const USDA_SEARCH_URL = 'https://api.nal.usda.gov/fdc/v1/foods/search'
 const USDA_FOOD_URL = 'https://api.nal.usda.gov/fdc/v1/food'
 const FETCH_TIMEOUT_MS = 15_000
 
+function createProviderError(message, statusCode) {
+  const error = new Error(message)
+  error.code = 'NUTRITION_PROVIDER_FAILED'
+  if (statusCode) {
+    error.statusCode = statusCode
+  }
+  return error
+}
+
+export function isNutritionProviderError(error) {
+  return Boolean(
+    error &&
+    typeof error === 'object' &&
+    (
+      error.code === 'NUTRITION_PROVIDER_FAILED' ||
+      error.code === 'NUTRITION_PROVIDER_TIMEOUT' ||
+      error.name === 'AbortError' ||
+      error.name === 'TimeoutError' ||
+      (error.name === 'TypeError' && /fetch/i.test(error.message || ''))
+    )
+  )
+}
+
 const nutrientKeys = {
   calories: new Set(['208', '1008']),
   protein: new Set(['203']),
@@ -267,7 +290,7 @@ async function searchFoods(query, searchCache) {
   })
 
   if (!response.ok) {
-    throw new Error(`USDA lookup failed (${response.status})`)
+    throw createProviderError(`USDA lookup failed (${response.status})`, response.status)
   }
 
   const data = await response.json()
@@ -337,7 +360,11 @@ async function estimateIngredientNutrition(ingredient, searchCache, detailCache)
       carbs: round(nutrientsPer100g.carbs * factor),
       fat: round(nutrientsPer100g.fat * factor),
     }
-  } catch {
+  } catch (error) {
+    if (isNutritionProviderError(error)) {
+      throw error
+    }
+
     return {
       ingredientId: ingredient.id,
       name: ingredient.name,

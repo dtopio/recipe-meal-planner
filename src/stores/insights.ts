@@ -20,6 +20,9 @@ export const useInsightsStore = defineStore('insights', () => {
   const weekNutritionByStart = ref<Record<string, WeeklyNutritionSummary>>({})
   const weekNutritionLoading = ref<Record<string, boolean>>({})
   const weekNutritionErrors = ref<Record<string, string | null>>({})
+  const periodNutritionByKey = ref<Record<string, WeeklyNutritionSummary>>({})
+  const periodNutritionLoading = ref<Record<string, boolean>>({})
+  const periodNutritionErrors = ref<Record<string, string | null>>({})
 
   function setLoading(target: typeof recipeNutritionLoading.value, key: string, value: boolean) {
     target[key] = value
@@ -72,6 +75,10 @@ export const useInsightsStore = defineStore('insights', () => {
       return weekNutritionByStart.value[weekStart]
     }
 
+    if (force) {
+      delete weekNutritionByStart.value[weekStart]
+    }
+
     setLoading(weekNutritionLoading.value, weekStart, true)
     weekNutritionErrors.value[weekStart] = null
 
@@ -80,10 +87,55 @@ export const useInsightsStore = defineStore('insights', () => {
       weekNutritionByStart.value[weekStart] = data
       return data
     } catch (error: unknown) {
+      delete weekNutritionByStart.value[weekStart]
       weekNutritionErrors.value[weekStart] = getErrorMessage(error, 'Failed to load weekly nutrition')
       throw new Error(weekNutritionErrors.value[weekStart] || 'Failed to load weekly nutrition')
     } finally {
       setLoading(weekNutritionLoading.value, weekStart, false)
+    }
+  }
+
+  async function loadPeriodNutrition(
+    period: 'day' | 'week' | 'month',
+    value: string,
+    force = false
+  ) {
+    const key = `${period}:${value}`
+    if (!force && periodNutritionByKey.value[key]) {
+      return periodNutritionByKey.value[key]
+    }
+
+    if (force) {
+      delete periodNutritionByKey.value[key]
+    }
+
+    setLoading(periodNutritionLoading.value, key, true)
+    periodNutritionErrors.value[key] = null
+
+    const params = new URLSearchParams({ period })
+    if (period === 'day') {
+      params.set('date', value)
+    } else if (period === 'month') {
+      params.set('month', value)
+    } else {
+      params.set('weekStart', value)
+    }
+
+    try {
+      const { data } = await apiClient<WeeklyNutritionSummary>(`/planner/nutrition?${params.toString()}`)
+      periodNutritionByKey.value[key] = data
+
+      if (period === 'week') {
+        weekNutritionByStart.value[value] = data
+      }
+
+      return data
+    } catch (error: unknown) {
+      delete periodNutritionByKey.value[key]
+      periodNutritionErrors.value[key] = getErrorMessage(error, 'Failed to load nutrition report')
+      throw new Error(periodNutritionErrors.value[key] || 'Failed to load nutrition report')
+    } finally {
+      setLoading(periodNutritionLoading.value, key, false)
     }
   }
 
@@ -97,9 +149,13 @@ export const useInsightsStore = defineStore('insights', () => {
     weekNutritionByStart,
     weekNutritionLoading,
     weekNutritionErrors,
+    periodNutritionByKey,
+    periodNutritionLoading,
+    periodNutritionErrors,
     loadRecipeNutrition,
     loadRecipeSummary,
     loadWeekNutrition,
+    loadPeriodNutrition,
   }
 })
 

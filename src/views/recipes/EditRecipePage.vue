@@ -23,6 +23,12 @@ const form = reactive({
   cookTime: 0,
   servings: 4,
   tags: '',
+  nutrition: {
+    calories: '',
+    protein: '',
+    carbs: '',
+    fat: '',
+  },
   ingredients: [{ quantity: '', unit: '', name: '' }] as { quantity: string; unit: string; name: string }[],
   instructions: [''] as string[],
 })
@@ -38,6 +44,10 @@ onMounted(async () => {
     form.cookTime = recipe.cookTime
     form.servings = recipe.servings
     form.tags = recipe.tags.join(', ')
+    form.nutrition.calories = recipe.nutrition ? String(recipe.nutrition.calories) : ''
+    form.nutrition.protein = recipe.nutrition ? String(recipe.nutrition.protein) : ''
+    form.nutrition.carbs = recipe.nutrition ? String(recipe.nutrition.carbs) : ''
+    form.nutrition.fat = recipe.nutrition ? String(recipe.nutrition.fat) : ''
     form.ingredients = recipe.ingredients.map(i => ({
       quantity: String(i.quantity),
       unit: i.unit,
@@ -61,6 +71,26 @@ function removeInstruction(index: number) {
   if (form.instructions.length > 1) form.instructions.splice(index, 1)
 }
 
+function buildNutritionInput() {
+  const values = [
+    form.nutrition.calories,
+    form.nutrition.protein,
+    form.nutrition.carbs,
+    form.nutrition.fat,
+  ].map(value => String(value).trim())
+
+  if (values.every(value => value === '')) {
+    return null
+  }
+
+  return {
+    calories: Number(form.nutrition.calories) || 0,
+    protein: Number(form.nutrition.protein) || 0,
+    carbs: Number(form.nutrition.carbs) || 0,
+    fat: Number(form.nutrition.fat) || 0,
+  }
+}
+
 async function handleSave() {
   saving.value = true
   try {
@@ -77,6 +107,7 @@ async function handleSave() {
         .filter(i => i.name.trim())
         .map(i => ({ quantity: Number(i.quantity) || 0, unit: i.unit, name: i.name })),
       instructions: form.instructions.filter(s => s.trim()),
+      nutrition: buildNutritionInput(),
     })
     router.push(`/recipes/${props.recipeId}`)
   } catch {
@@ -129,6 +160,28 @@ async function handleSave() {
             <div class="space-y-2">
               <Label>Tags</Label>
               <Input v-model="form.tags" placeholder="healthy, dinner, quick" />
+            </div>
+          </div>
+
+          <div class="surface-card p-5 lg:p-6 space-y-4">
+            <h3 class="text-sm font-bold text-foreground tracking-tight">Whole Recipe Nutrition</h3>
+            <div class="grid grid-cols-2 gap-3">
+              <div class="space-y-2">
+                <Label>Calories</Label>
+                <Input v-model="form.nutrition.calories" type="number" min="0" placeholder="0" />
+              </div>
+              <div class="space-y-2">
+                <Label>Protein (g)</Label>
+                <Input v-model="form.nutrition.protein" type="number" min="0" step="0.1" placeholder="0" />
+              </div>
+              <div class="space-y-2">
+                <Label>Carbs (g)</Label>
+                <Input v-model="form.nutrition.carbs" type="number" min="0" step="0.1" placeholder="0" />
+              </div>
+              <div class="space-y-2">
+                <Label>Fat (g)</Label>
+                <Input v-model="form.nutrition.fat" type="number" min="0" step="0.1" placeholder="0" />
+              </div>
             </div>
           </div>
 
