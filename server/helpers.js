@@ -622,6 +622,7 @@ export async function getPeriodNutrition(householdId, {
   const mealTypeCounts = {}
   let plannedMealCount = 0
   let missingNutritionCount = 0
+  const missingMeals = []
   const nutritionSources = new Set()
 
   for (const slot of slots) {
@@ -671,13 +672,16 @@ export async function getPeriodNutrition(householdId, {
     } catch (error) {
       missingNutritionCount += 1
       day.missingNutritionCount += 1
-      day.missingMeals.push({
+      const missingMeal = {
         slotId: slot.id,
+        date: slot.date,
         mealType: slot.mealType,
         recipeId: slot.recipeId,
         recipeTitle: slot.recipe.title,
         servings: slot.servings || slot.recipe.servings || 1,
-      })
+      }
+      missingMeals.push(missingMeal)
+      day.missingMeals.push(missingMeal)
       logger.warn('Failed to compute nutrition for slot', { slotId: slot.id, error: error.message })
     }
   }
@@ -692,6 +696,7 @@ export async function getPeriodNutrition(householdId, {
     month: month || undefined,
     plannedMealCount,
     missingNutritionCount,
+    missingMeals,
     mealTypeCounts,
     source: nutritionSources.size > 0 ? Array.from(nutritionSources).join(' + ') : 'Recipe nutrition',
     total: roundNutritionTotals(total),

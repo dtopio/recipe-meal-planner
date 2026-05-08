@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import AppSkeleton from '@/components/app/AppSkeleton.vue'
-import { DEFAULT_HEALTH_TARGETS, type WeeklyNutritionMeal, type WeeklyNutritionMissingMeal } from '@/types'
+import { DEFAULT_HEALTH_TARGETS, type MealType, type WeeklyNutritionMeal, type WeeklyNutritionMissingMeal } from '@/types'
 import { formatDateShort, getDayNameShort, getTodayDateKey, isToday } from '@/utils/date'
 import { getMealPeriodDisplay, getMealPeriods } from '@/utils/meal-periods'
 import {
@@ -35,6 +35,13 @@ type ReportDay = {
   fat: number
   meals: WeeklyNutritionMeal[]
   missingMeals: WeeklyNutritionMissingMeal[]
+}
+type MissingNutritionLink = {
+  recipeId: string
+  recipeTitle: string
+  count: number
+  firstDate: string
+  mealTypes: MealType[]
 }
 
 const router = useRouter()
@@ -106,6 +113,57 @@ const perDayData = computed<ReportDay[]>(() => (
 ))
 const selectedDayMeals = computed(() => perDayData.value.find(day => day.date === selectedDate.value)?.meals || [])
 const selectedDayMissingMeals = computed(() => perDayData.value.find(day => day.date === selectedDate.value)?.missingMeals || [])
+const missingNutritionRecipeLinks = computed<MissingNutritionLink[]>(() => {
+  const links = new Map<string, {
+    recipeId: string
+    recipeTitle: string
+    count: number
+    firstDate: string
+    mealTypes: Set<MealType>
+  }>()
+
+  for (const day of perDayData.value) {
+    for (const meal of day.missingMeals) {
+      const existing = links.get(meal.recipeId)
+
+      if (existing) {
+        existing.count += 1
+        existing.firstDate = day.date < existing.firstDate ? day.date : existing.firstDate
+        existing.mealTypes.add(meal.mealType)
+      } else {
+        links.set(meal.recipeId, {
+          recipeId: meal.recipeId,
+          recipeTitle: meal.recipeTitle,
+          count: 1,
+          firstDate: day.date,
+          mealTypes: new Set([meal.mealType]),
+        })
+      }
+    }
+  }
+
+  return Array.from(links.values())
+    .map(item => ({
+      recipeId: item.recipeId,
+      recipeTitle: item.recipeTitle,
+      count: item.count,
+      firstDate: item.firstDate,
+      mealTypes: Array.from(item.mealTypes),
+    }))
+    .sort((a, b) => a.firstDate.localeCompare(b.firstDate) || a.recipeTitle.localeCompare(b.recipeTitle))
+})
+const monthlyCoverageStats = computed(() => {
+  const plannedDays = perDayData.value.filter(day => day.plannedMealCount > 0).length
+  const bestProteinDay = getTopNutritionDay('protein')
+  const highestCalorieDay = getTopNutritionDay('calories')
+
+  return {
+    plannedDays,
+    emptyDays: Math.max(periodDayCount.value - plannedDays, 0),
+    bestProteinDay,
+    highestCalorieDay,
+  }
+})
 const calorieChartMax = computed(() => Math.max(...perDayData.value.map(day => day.calories), healthTargets.value.calories, 1))
 const calorieTargetLineBottom = computed(() => `${Math.min(100, Math.round((healthTargets.value.calories / calorieChartMax.value) * 100))}%`)
 const averageDailyCalories = computed(() => Math.round((reportNutrition.value?.total.calories || 0) / periodDayCount.value))
@@ -198,6 +256,14 @@ async function handleDateInput() {
 function getProgress(current: number, target: number) {
   if (!target) return 0
   return Math.min(100, Math.round((current / target) * 100))
+}
+
+function getTopNutritionDay(key: 'protein' | 'calories') {
+  return perDayData.value.reduce<ReportDay | null>((best, day) => {
+    if (day[key] <= 0) return best
+    if (!best || day[key] > best[key]) return day
+    return best
+  }, null)
 }
 
 function getBarHeight(calories: number) {
@@ -622,6 +688,9 @@ function formatDateLong(dateKey: string) {
                 <div class="mt-4 rounded-lg bg-background/60 px-3 py-2 text-xs font-semibold text-muted-foreground">
                   Missing manual nutrition
                 </div>
+                <Button variant="outline" size="sm" class="mt-3 w-full" @click="router.push(`/recipes/${meal.recipeId}/edit`)">
+                  Edit nutrition
+                </Button>
               </div>
             </div>
             <div v-else class="rounded-xl border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
@@ -701,6 +770,35 @@ function formatDateLong(dateKey: string) {
               <div class="h-px flex-1 border-t-2 border-dashed border-primary/30" />
               <span class="text-[11px] font-semibold text-primary/60">Daily target: {{ healthTargets.calories }} cal</span>
               <div class="h-px flex-1 border-t-2 border-dashed border-primary/30" />
+            </div>
+
+            <div v-if="reportMode === 'month'" class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div class="rounded-xl bg-muted/35 p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Planned days</p>
+                <p class="mt-2 text-2xl font-extrabold text-foreground">{{ monthlyCoverageStats.plannedDays }}</p>
+              </div>
+              <div class="rounded-xl bg-muted/35 p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Empty days</p>
+                <p class="mt-2 text-2xl font-extrabold text-foreground">{{ monthlyCoverageStats.emptyDays }}</p>
+              </div>
+              <div class="rounded-xl bg-emerald-500/8 p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Best protein day</p>
+                <p class="mt-2 text-lg font-extrabold text-foreground">
+                  {{ monthlyCoverageStats.bestProteinDay ? formatDateShort(monthlyCoverageStats.bestProteinDay.date) : '-' }}
+                </p>
+                <p class="mt-1 text-xs text-muted-foreground">
+                  {{ monthlyCoverageStats.bestProteinDay ? `${monthlyCoverageStats.bestProteinDay.protein}g protein` : 'No protein tracked' }}
+                </p>
+              </div>
+              <div class="rounded-xl bg-orange-500/8 p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-400">Highest calorie day</p>
+                <p class="mt-2 text-lg font-extrabold text-foreground">
+                  {{ monthlyCoverageStats.highestCalorieDay ? formatDateShort(monthlyCoverageStats.highestCalorieDay.date) : '-' }}
+                </p>
+                <p class="mt-1 text-xs text-muted-foreground">
+                  {{ monthlyCoverageStats.highestCalorieDay ? `${monthlyCoverageStats.highestCalorieDay.calories} cal` : 'No calories tracked' }}
+                </p>
+              </div>
             </div>
           </template>
         </template>
@@ -782,7 +880,26 @@ function formatDateLong(dateKey: string) {
 
             <div v-if="reportNutrition?.missingNutritionCount" class="flex items-start gap-3 rounded-xl bg-amber-500/8 p-3">
               <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-              <p class="text-sm text-foreground">{{ reportNutrition.missingNutritionCount }} planned meals are missing recipe nutrition.</p>
+              <div class="min-w-0 flex-1">
+                <p class="text-sm text-foreground">{{ reportNutrition.missingNutritionCount }} planned meals are missing recipe nutrition.</p>
+                <div v-if="missingNutritionRecipeLinks.length" class="mt-3 space-y-2">
+                  <div
+                    v-for="item in missingNutritionRecipeLinks"
+                    :key="item.recipeId"
+                    class="flex flex-col gap-2 rounded-lg bg-background/70 p-2.5 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div class="min-w-0">
+                      <p class="truncate text-xs font-bold text-foreground">{{ item.recipeTitle }}</p>
+                      <p class="mt-0.5 text-[11px] text-muted-foreground">
+                        {{ item.count }} meal{{ item.count === 1 ? '' : 's' }} from {{ formatDateShort(item.firstDate) }}
+                      </p>
+                    </div>
+                    <Button variant="outline" size="sm" class="h-8 shrink-0" @click="router.push(`/recipes/${item.recipeId}/edit`)">
+                      Edit nutrition
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div v-if="reportNutrition && hasTrackedNutrition && reportNutrition.total.protein < periodTargets.protein * 0.7" class="flex items-start gap-3 rounded-xl bg-rose-500/8 p-3">

@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { Recipe } from '@/types'
 import { formatMinutes } from '@/utils/date'
-import { Clock, Users } from 'lucide-vue-next'
+import { AlertTriangle, CheckCircle2, Clock, Users } from 'lucide-vue-next'
 
-defineProps<{
+const props = defineProps<{
   recipe: Recipe
   compact?: boolean
 }>()
@@ -11,6 +12,12 @@ defineProps<{
 defineEmits<{
   click: []
 }>()
+
+const nutritionKeys = ['calories', 'protein', 'carbs', 'fat'] as const
+const hasNutrition = computed(() => Boolean(
+  props.recipe.nutrition
+    && nutritionKeys.some(key => Number(props.recipe.nutrition?.[key] || 0) > 0)
+))
 </script>
 
 <template>
@@ -65,6 +72,14 @@ defineEmits<{
       </p>
 
       <div class="mt-auto space-y-2">
+        <span
+          class="inline-flex w-fit items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+          :class="hasNutrition ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'"
+        >
+          <CheckCircle2 v-if="hasNutrition" class="h-3 w-3" />
+          <AlertTriangle v-else class="h-3 w-3" />
+          {{ hasNutrition ? 'Nutrition added' : 'Missing nutrition' }}
+        </span>
         <div class="flex items-center gap-3 text-xs text-muted-foreground">
           <span v-if="compact" class="inline-flex items-center gap-1">
             <Clock class="w-3.5 h-3.5" />

@@ -11,14 +11,14 @@ import AppSkeleton from '@/components/app/AppSkeleton.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { formatMinutes } from '@/utils/date'
-import { getPantryCoverage, getPreferenceConflicts, getRecipeDietaryProfile, getRecipeHealthFit } from '@/utils/recipe'
+import { getPantryCoverage, getPreferenceConflicts, getRecipeDietaryProfile, getRecipeHealthFit, ingredientMatchKey } from '@/utils/recipe'
 import { apiClient } from '@/services/api/client'
 import {
   ArrowLeft, Clock, Users, Edit, ChefHat, ShoppingCart, CalendarPlus,
-  Minus, Plus, ExternalLink, Trash2, Sparkles, Loader2, Star, MessageSquare, Send
+  Minus, Plus, ExternalLink, Trash2, Sparkles, Loader2, Star, MessageSquare, Send, AlertTriangle
 } from 'lucide-vue-next'
 import { DEFAULT_HEALTH_TARGETS } from '@/types'
-import type { Recipe, RecipeIngredient, RecipeAiAskResponse, RecipeReview, RecipeReviewSummary } from '@/types'
+import type { PantryItem, Recipe, RecipeIngredient, RecipeAiAskResponse, RecipeReview, RecipeReviewSummary } from '@/types'
 import { useUiStore } from '@/stores/ui'
 import { toast } from 'vue-sonner'
 
@@ -55,6 +55,10 @@ const quickAskPrompts = [
   'Is this healthy for me?',
   'Is this high enough in protein?',
 ]
+type LowStockIngredientWarning = {
+  ingredient: RecipeIngredient
+  pantryItem: PantryItem
+}
 
 const scaledServings = computed(() => (recipe.value?.servings || 1) * scaleMultiplier.value)
 const dietaryProfile = computed(() => (recipe.value ? getRecipeDietaryProfile(recipe.value) : null))
@@ -104,6 +108,27 @@ const coverageByIngredient = computed(() => {
   }
 
   return coverage
+})
+const lowStockIngredientWarnings = computed<LowStockIngredientWarning[]>(() => {
+  if (!recipe.value || !pantry.items.length) {
+    return []
+  }
+
+  const warnings: LowStockIngredientWarning[] = []
+
+  for (const ingredient of recipe.value.ingredients) {
+    const ingredientKey = ingredientMatchKey(ingredient.name, ingredient.unit)
+    const pantryItem = pantry.items.find(item =>
+      ingredientMatchKey(item.name, item.unit) === ingredientKey
+      && Number(item.quantity) <= Number(item.lowStockThreshold)
+    )
+
+    if (pantryItem) {
+      warnings.push({ ingredient, pantryItem })
+    }
+  }
+
+  return warnings
 })
 
 async function loadNutritionEstimate(recipeId: string) {
@@ -756,6 +781,27 @@ function handleDelete() {
               class="mb-4 rounded-xl border border-border/60 bg-muted/30 px-3.5 py-3 text-xs text-muted-foreground"
             >
               Track pantry items to see ingredient coverage and subtract stock from shopping generation.
+            </div>
+
+            <div
+              v-else-if="lowStockIngredientWarnings.length"
+              class="mb-4 rounded-xl border border-amber-500/20 bg-amber-500/8 p-3.5"
+            >
+              <div class="flex items-start gap-2.5">
+                <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                <div class="min-w-0">
+                  <p class="text-sm font-semibold text-foreground">Pantry low-stock warning</p>
+                  <div class="mt-2 flex flex-wrap gap-2">
+                    <span
+                      v-for="item in lowStockIngredientWarnings"
+                      :key="item.ingredient.id"
+                      class="rounded-full bg-background/70 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400"
+                    >
+                      {{ item.ingredient.name }}: {{ formatQuantity(item.pantryItem.quantity) }} {{ item.pantryItem.unit || 'units' }} left
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <ul class="space-y-3">
