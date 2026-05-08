@@ -178,8 +178,9 @@ function getProteinTone(current: number, target: number) {
   <template v-else>
     <div class="grid gap-6 lg:grid-cols-12 stagger-children">
 
+      <div class="lg:col-span-8 space-y-6">
       <!-- ===== Tonight's Dinner Hero ===== -->
-      <div class="lg:col-span-8 surface-elevated overflow-hidden">
+      <div class="surface-elevated overflow-hidden">
         <div v-if="tonightsDinner" class="flex flex-col md:flex-row">
           <!-- Image -->
           <div class="relative md:w-2/5 h-52 md:h-auto">
@@ -238,6 +239,63 @@ function getProteinTone(current: number, target: number) {
             <CalendarDays class="w-4 h-4 mr-1.5" /> Plan a Meal
           </Button>
         </div>
+      </div>
+
+      <!-- ===== Quick Actions ===== -->
+      <div class="surface-card p-5">
+        <h3 class="font-bold text-foreground mb-4 tracking-tight">Quick Actions</h3>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          <QuickActionCard title="Household" description="Members and invite code" icon="HM" color="emerald" @click="router.push('/household')" />
+          <QuickActionCard title="Add Recipe" description="Create a new recipe manually" icon="📝" color="primary" @click="router.push('/recipes/new')" />
+          <QuickActionCard title="Import Recipe" description="Paste a URL and import" icon="🔗" color="amber" @click="router.push('/recipes/import')" />
+          <QuickActionCard title="Plan Meals" description="Open the weekly planner" icon="📅" color="blue" @click="router.push('/planner')" />
+          <QuickActionCard title="Weekly Report" description="View nutrition summary" icon="📊" color="emerald" @click="router.push('/weekly-report')" />
+          <QuickActionCard title="Shopping List" description="Manage your items" icon="🛒" color="violet" @click="router.push('/shopping-list')" />
+        </div>
+      </div>
+
+      <!-- ===== Weekly Preview ===== -->
+      <div class="surface-card p-5">
+        <div class="flex items-center justify-between mb-5">
+          <h3 class="font-bold text-foreground flex items-center gap-2 tracking-tight">
+            <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <CalendarDays class="w-4 h-4 text-primary" />
+            </div>
+            This Week
+          </h3>
+          <button type="button" @click="router.push('/planner')" class="text-xs text-primary font-semibold hover:text-primary/80 inline-flex items-center gap-0.5 transition-colors">
+            Full planner <ArrowRight class="w-3 h-3" />
+          </button>
+        </div>
+
+        <div class="flex gap-2.5 overflow-x-auto pb-2 -mx-1 px-1 snap-x">
+          <div
+            v-for="day in upcomingMeals"
+            :key="day.date"
+            class="shrink-0 w-36 lg:w-auto lg:flex-1 snap-start"
+          >
+            <div
+              class="rounded-xl border p-3.5 h-full transition-all duration-200"
+              :class="isToday(day.date) ? 'border-primary/40 bg-primary/[0.04] shadow-sm shadow-primary/5' : 'border-border/60 bg-card hover:border-border'"
+            >
+              <div class="text-xs font-semibold mb-2.5" :class="isToday(day.date) ? 'text-primary' : 'text-muted-foreground'">
+                {{ getDayNameShort(day.date) }} · {{ formatDateShort(day.date) }}
+                <span v-if="isToday(day.date)" class="ml-1.5 text-[10px] bg-primary text-primary-foreground px-1.5 py-0.5 rounded-full font-bold">Today</span>
+              </div>
+              <div v-if="day.meals.length" class="space-y-2">
+                <div v-for="meal in day.meals" :key="meal.id" class="flex items-center gap-2">
+                  <img v-if="meal.recipe?.imageUrl" :src="meal.recipe.imageUrl" class="w-7 h-7 rounded-lg object-cover shrink-0 ring-1 ring-border/40" />
+                  <div class="min-w-0">
+                    <p class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{{ formatMealPeriodLabel(meal.mealType) }}</p>
+                    <span class="text-xs font-medium text-foreground truncate block">{{ meal.recipe?.title }}</span>
+                  </div>
+                </div>
+              </div>
+              <p v-else class="text-[11px] text-muted-foreground/40 italic">Nothing planned</p>
+            </div>
+          </div>
+        </div>
+      </div>
       </div>
 
       <!-- ===== Shopping and Pantry ===== -->
@@ -456,62 +514,6 @@ function getProteinTone(current: number, target: number) {
 
           <div class="rounded-xl border border-amber-500/20 bg-amber-500/8 p-4 text-sm text-foreground">
             Nutrition data is unavailable. {{ weekNutritionError }}
-          </div>
-        </div>
-      </div>
-
-      <!-- ===== Quick Actions ===== -->
-      <div class="lg:col-span-4 surface-card p-5">
-        <h3 class="font-bold text-foreground mb-4 tracking-tight">Quick Actions</h3>
-        <div class="grid grid-cols-1 gap-2.5">
-          <QuickActionCard title="Household" description="Members and invite code" icon="HM" color="emerald" @click="router.push('/household')" />
-          <QuickActionCard title="Add Recipe" description="Create a new recipe manually" icon="📝" color="primary" @click="router.push('/recipes/new')" />
-          <QuickActionCard title="Import Recipe" description="Paste a URL and import" icon="🔗" color="amber" @click="router.push('/recipes/import')" />
-          <QuickActionCard title="Plan Meals" description="Open the weekly planner" icon="📅" color="blue" @click="router.push('/planner')" />
-          <QuickActionCard title="Weekly Report" description="View nutrition summary" icon="📊" color="emerald" @click="router.push('/weekly-report')" />
-          <QuickActionCard title="Shopping List" description="Manage your items" icon="🛒" color="violet" @click="router.push('/shopping-list')" />
-        </div>
-      </div>
-
-      <!-- ===== Weekly Preview ===== -->
-      <div class="lg:col-span-8 surface-card p-5">
-        <div class="flex items-center justify-between mb-5">
-          <h3 class="font-bold text-foreground flex items-center gap-2 tracking-tight">
-            <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <CalendarDays class="w-4 h-4 text-primary" />
-            </div>
-            This Week
-          </h3>
-          <button type="button" @click="router.push('/planner')" class="text-xs text-primary font-semibold hover:text-primary/80 inline-flex items-center gap-0.5 transition-colors">
-            Full planner <ArrowRight class="w-3 h-3" />
-          </button>
-        </div>
-
-        <div class="flex gap-2.5 overflow-x-auto pb-2 -mx-1 px-1 snap-x">
-          <div
-            v-for="day in upcomingMeals"
-            :key="day.date"
-            class="shrink-0 w-36 lg:w-auto lg:flex-1 snap-start"
-          >
-            <div
-              class="rounded-xl border p-3.5 h-full transition-all duration-200"
-              :class="isToday(day.date) ? 'border-primary/40 bg-primary/[0.04] shadow-sm shadow-primary/5' : 'border-border/60 bg-card hover:border-border'"
-            >
-              <div class="text-xs font-semibold mb-2.5" :class="isToday(day.date) ? 'text-primary' : 'text-muted-foreground'">
-                {{ getDayNameShort(day.date) }} · {{ formatDateShort(day.date) }}
-                <span v-if="isToday(day.date)" class="ml-1.5 text-[10px] bg-primary text-primary-foreground px-1.5 py-0.5 rounded-full font-bold">Today</span>
-              </div>
-              <div v-if="day.meals.length" class="space-y-2">
-                <div v-for="meal in day.meals" :key="meal.id" class="flex items-center gap-2">
-                  <img v-if="meal.recipe?.imageUrl" :src="meal.recipe.imageUrl" class="w-7 h-7 rounded-lg object-cover shrink-0 ring-1 ring-border/40" />
-                  <div class="min-w-0">
-                    <p class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{{ formatMealPeriodLabel(meal.mealType) }}</p>
-                    <span class="text-xs font-medium text-foreground truncate block">{{ meal.recipe?.title }}</span>
-                  </div>
-                </div>
-              </div>
-              <p v-else class="text-[11px] text-muted-foreground/40 italic">Nothing planned</p>
-            </div>
           </div>
         </div>
       </div>

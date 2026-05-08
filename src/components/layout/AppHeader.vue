@@ -5,7 +5,7 @@ import { useUiStore } from '@/stores/ui'
 import { useOnline } from '@/composables/useOnline'
 import StatusBadge from '@/components/app/StatusBadge.vue'
 import { syncService } from '@/services/sync/socket'
-import { Menu, Bell, LogOut, User, Settings, Sun, Moon, Monitor } from 'lucide-vue-next'
+import { Menu, LogOut, User, Settings, Sun, Moon, Monitor } from 'lucide-vue-next'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -80,16 +80,6 @@ function handleLogout() {
           <Sun v-if="ui.themeMode === 'light'" class="w-5 h-5 text-amber-500" />
           <Moon v-else-if="ui.themeMode === 'dark'" class="w-5 h-5 text-indigo-400" />
           <Monitor v-else class="w-5 h-5 text-muted-foreground" />
-        </button>
-
-        <!-- Notifications -->
-        <button
-          type="button"
-          class="flex items-center justify-center w-11 h-11 rounded-xl hover:bg-muted transition-colors relative"
-          aria-label="Notifications"
-        >
-          <Bell class="w-5 h-5 text-muted-foreground" />
-          <span class="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full ring-2 ring-card" />
         </button>
 
         <!-- User menu -->

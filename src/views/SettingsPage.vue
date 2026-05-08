@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
-import { LogOut, User, Bell, ShieldCheck, Activity, Sun, Moon, Monitor, Palette, Lock, Trash2 } from 'lucide-vue-next'
+import { LogOut, User, ShieldCheck, Activity, Sun, Moon, Monitor, Palette, Lock, Trash2 } from 'lucide-vue-next'
 import { useUiStore } from '@/stores/ui'
 import { toast } from 'vue-sonner'
 import { DEFAULT_HEALTH_TARGETS, DEFAULT_MEAL_PERIODS } from '@/types'
@@ -471,42 +471,6 @@ async function handleSaveHealthTargets() {
       >
         Save health targets
       </Button>
-    </div>
-
-    <!-- Notifications -->
-    <div class="surface-card p-5 lg:p-6">
-      <h3 class="font-bold text-foreground tracking-tight mb-4 flex items-center gap-2">
-        <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-          <Bell class="w-4 h-4 text-primary" />
-        </div>
-        Notifications
-      </h3>
-
-      <div class="space-y-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium text-foreground">Shopping list updates</p>
-            <p class="text-xs text-muted-foreground">Get notified when items are checked off</p>
-          </div>
-          <Switch :model-value="true" />
-        </div>
-        <Separator />
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium text-foreground">Meal plan reminders</p>
-            <p class="text-xs text-muted-foreground">Daily reminder about tonight's meal</p>
-          </div>
-          <Switch :model-value="true" />
-        </div>
-        <Separator />
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium text-foreground">New member joins</p>
-            <p class="text-xs text-muted-foreground">When someone joins your household</p>
-          </div>
-          <Switch :model-value="false" />
-        </div>
-      </div>
     </div>
 
     <!-- Change password -->
