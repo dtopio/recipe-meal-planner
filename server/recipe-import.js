@@ -480,21 +480,37 @@ async function importFromWordPressRest(safeUrl, sourceUrl) {
   const slug = getPostSlug(parsedUrl)
   if (!slug) return null
 
-  try {
-    const endpoint = `${parsedUrl.origin}/wp-json/wp/v2/posts?slug=${encodeURIComponent(slug)}&_fields=title,content,excerpt,yoast_head_json`
-    const text = await fetchText(endpoint, 'application/json,text/html;q=0.9')
-    const posts = JSON.parse(text)
-    const post = Array.isArray(posts) ? posts[0] : null
-    const html = post?.content?.rendered
+  const fields = 'title,content,excerpt,yoast_head_json'
+  const endpoints = [
+    `${parsedUrl.origin}/wp-json/wp/v2/posts?slug=${encodeURIComponent(slug)}&_fields=${fields}`,
+    `https://public-api.wordpress.com/wp/v2/sites/${parsedUrl.hostname}/posts?slug=${encodeURIComponent(slug)}&_fields=${fields}`,
+  ]
 
-    if (!html) return null
-
-    return parseWprmRecipe(html, sourceUrl, wordpressFallbackFromPost(post))
-  } catch (error) {
-    if (error instanceof SyntaxError) return null
-    if (error instanceof ImportRecipeError && error.code === 'RECIPE_FETCH_FAILED') return null
-    throw error
+  if (parsedUrl.hostname.startsWith('www.')) {
+    endpoints.push(
+      `https://public-api.wordpress.com/wp/v2/sites/${parsedUrl.hostname.slice(4)}/posts?slug=${encodeURIComponent(slug)}&_fields=${fields}`
+    )
   }
+
+  for (const endpoint of endpoints) {
+    try {
+      const text = await fetchText(endpoint, 'application/json,text/html;q=0.9')
+      const posts = JSON.parse(text)
+      const post = Array.isArray(posts) ? posts[0] : null
+      const html = post?.content?.rendered
+
+      if (!html) continue
+
+      const recipe = parseWprmRecipe(html, sourceUrl, wordpressFallbackFromPost(post))
+      if (recipe) return recipe
+    } catch (error) {
+      if (error instanceof SyntaxError) continue
+      if (error instanceof ImportRecipeError && error.code === 'RECIPE_FETCH_FAILED') continue
+      throw error
+    }
+  }
+
+  return null
 }
 
 export async function importRecipeFromUrl(url) {
@@ -523,6 +539,10 @@ export async function importRecipeFromUrl(url) {
   const wordpressRecipe = await importFromWordPressRest(safeUrl, url)
   if (wordpressRecipe) {
     return wordpressRecipe
+  }
+
+  if (fetchError?.status === 403) {
+    throw new ImportRecipeError('This recipe site blocked the import request. Try another recipe URL or add it manually.', 'RECIPE_SITE_BLOCKED', 422)
   }
 
   if (fetchError) {
