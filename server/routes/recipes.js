@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { config } from '../config.js'
-import { importRecipeFromUrl } from '../recipe-import.js'
+import { importRecipeFromUrl, ImportRecipeError } from '../recipe-import.js'
 import { createId, normalizeTags, nowIso } from '../utils.js'
 import {
   sendOk,
@@ -273,7 +273,22 @@ router.post('/import', requireAuth, requireHousehold, asyncHandler(async (req, r
     )
   }
 
-  const imported = await importRecipeFromUrl(dto.url)
+  let imported
+  try {
+    imported = await importRecipeFromUrl(dto.url)
+  } catch (error) {
+    if (error instanceof ImportRecipeError) {
+      return sendError(
+        res,
+        error.statusCode || 422,
+        error.message,
+        error.code || 'RECIPE_IMPORT_FAILED'
+      )
+    }
+
+    throw error
+  }
+
   const timestamp = nowIso()
   const recipe = {
     id: createId('recipe'),

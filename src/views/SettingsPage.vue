@@ -16,6 +16,8 @@ import { DEFAULT_HEALTH_TARGETS, DEFAULT_MEAL_PERIODS } from '@/types'
 import type { DietaryPreference, HealthTargets, MealType } from '@/types'
 import { formatMealPeriodLabel, normalizeMealPeriod } from '@/utils/meal-periods'
 
+type TargetPreviewPeriod = 'daily' | 'weekly' | 'monthly'
+
 const router = useRouter()
 const auth = useAuthStore()
 const household = useHouseholdStore()
@@ -30,6 +32,13 @@ const dietaryPreferences = ref<DietaryPreference[]>([])
 const mealPeriods = ref<MealType[]>([...DEFAULT_MEAL_PERIODS])
 const newMealPeriod = ref('')
 const healthTargets = ref<HealthTargets>({ ...DEFAULT_HEALTH_TARGETS })
+const targetPreviewPeriod = ref<TargetPreviewPeriod>('daily')
+
+const targetPreviewOptions: { value: TargetPreviewPeriod; label: string; days: number }[] = [
+  { value: 'daily', label: 'Daily', days: 1 },
+  { value: 'weekly', label: 'Weekly', days: 7 },
+  { value: 'monthly', label: 'Monthly', days: 31 },
+]
 
 const dietaryOptions: { value: DietaryPreference; label: string; description: string }[] = [
   {
@@ -57,6 +66,15 @@ const dietaryOptions: { value: DietaryPreference; label: string; description: st
 const healthTargetsValid = computed(() => (
   ['calories', 'protein', 'carbs', 'fat'].every(key => Number(healthTargets.value[key as keyof HealthTargets]) > 0)
 ))
+const activeTargetPreview = computed(() => (
+  targetPreviewOptions.find(option => option.value === targetPreviewPeriod.value) || targetPreviewOptions[0]
+))
+const previewedHealthTargets = computed<HealthTargets>(() => ({
+  calories: multiplyTarget(healthTargets.value.calories),
+  protein: multiplyTarget(healthTargets.value.protein),
+  carbs: multiplyTarget(healthTargets.value.carbs),
+  fat: multiplyTarget(healthTargets.value.fat),
+}))
 
 onMounted(async () => {
   if (localStorage.getItem('household_id') && !household.household) {
@@ -201,6 +219,15 @@ function handleDeleteAccount() {
       }
     },
   })
+}
+
+function multiplyTarget(value: number) {
+  const numericValue = Number(value)
+  return Number.isFinite(numericValue) ? numericValue * activeTargetPreview.value.days : 0
+}
+
+function formatTargetAmount(value: number) {
+  return Number.isInteger(value) ? value : Number(value.toFixed(1))
 }
 
 async function handleSaveHealthTargets() {
@@ -426,7 +453,7 @@ async function handleSaveHealthTargets() {
       </h3>
 
       <p class="text-sm text-muted-foreground mb-5">
-        Set your personal daily targets so the dashboard can flag when calories, protein, carbs, or fat are off pace.
+        These are saved per account. Weekly and monthly reports multiply your daily targets automatically.
       </p>
 
       <div class="grid gap-4 sm:grid-cols-2">
@@ -448,19 +475,40 @@ async function handleSaveHealthTargets() {
         </div>
       </div>
 
-      <div class="mt-5 flex flex-wrap gap-2">
-        <span class="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-          Weekly calories: {{ healthTargets.calories * 7 }}
-        </span>
-        <span class="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-          Weekly protein: {{ healthTargets.protein * 7 }}g
-        </span>
-        <span class="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
-          Weekly carbs: {{ healthTargets.carbs * 7 }}g
-        </span>
-        <span class="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
-          Weekly fat: {{ healthTargets.fat * 7 }}g
-        </span>
+      <div class="mt-5 space-y-3">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p class="text-sm font-semibold text-foreground">Preview targets</p>
+          <div class="inline-flex rounded-xl border border-border/70 bg-muted/30 p-1">
+            <button
+              v-for="option in targetPreviewOptions"
+              :key="option.value"
+              type="button"
+              class="rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors"
+              :class="targetPreviewPeriod === option.value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+              @click="targetPreviewPeriod = option.value"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+          <span class="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+            {{ activeTargetPreview.label }} calories: {{ formatTargetAmount(previewedHealthTargets.calories) }} cal
+          </span>
+          <span class="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+            {{ activeTargetPreview.label }} protein: {{ formatTargetAmount(previewedHealthTargets.protein) }}g
+          </span>
+          <span class="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
+            {{ activeTargetPreview.label }} carbs: {{ formatTargetAmount(previewedHealthTargets.carbs) }}g
+          </span>
+          <span class="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
+            {{ activeTargetPreview.label }} fat: {{ formatTargetAmount(previewedHealthTargets.fat) }}g
+          </span>
+        </div>
+        <p v-if="targetPreviewPeriod === 'monthly'" class="text-xs text-muted-foreground">
+          Monthly preview uses 31 days; monthly reports use the selected month's day count.
+        </p>
       </div>
 
       <Button

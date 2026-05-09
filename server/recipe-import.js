@@ -10,14 +10,116 @@ import {
 const FETCH_TIMEOUT_MS = 15_000
 const MAX_RESPONSE_BYTES = 5 * 1024 * 1024 // 5 MB
 
+export class ImportRecipeError extends Error {
+  constructor(message, code = 'RECIPE_IMPORT_FAILED', statusCode = 422) {
+    super(message)
+    this.name = 'ImportRecipeError'
+    this.code = code
+    this.statusCode = statusCode
+  }
+}
+
 function decodeHtmlEntities(value) {
   return value
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, '\'')
+    .replace(/&#x27;/gi, '\'')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&nbsp;/g, ' ')
+    .replace(/&ndash;/g, '-')
+    .replace(/&mdash;/g, '-')
+    .replace(/&deg;/g, '\u00b0')
+    .replace(/&frac14;/g, '1/4')
+    .replace(/&frac12;/g, '1/2')
+    .replace(/&frac34;/g, '3/4')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([\da-f]+);/gi, (_, code) => String.fromCharCode(Number.parseInt(code, 16)))
+}
+
+function normalizeText(value) {
+  return decodeHtmlEntities(String(value || ''))
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([:;,.!?])/g, '$1')
+    .trim()
+}
+
+function stripHtml(value) {
+  return normalizeText(
+    String(value || '')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+  )
+}
+
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function getAttrValue(tag, attrName) {
+  const match = String(tag || '').match(new RegExp(`${escapeRegex(attrName)}\\s*=\\s*["']([^"']+)["']`, 'i'))
+  return match ? decodeHtmlEntities(match[1]) : ''
+}
+
+function classListContains(attrs, className) {
+  const classValue = getAttrValue(attrs, 'class')
+  return classValue.split(/\s+/).includes(className)
+}
+
+function extractElementsByTagAndClass(html, tagName, className) {
+  const matches = []
+  const pattern = new RegExp(`<${tagName}\\b([^>]*)>([\\s\\S]*?)<\\/${tagName}>`, 'gi')
+
+  for (const match of html.matchAll(pattern)) {
+    if (classListContains(match[1], className)) {
+      matches.push(match[2])
+    }
+  }
+
+  return matches
+}
+
+function extractFirstTextByClass(html, className) {
+  const pattern = /<([a-zA-Z0-9:-]+)\b([^>]*)>/gi
+
+  for (const match of html.matchAll(pattern)) {
+    if (classListContains(match[2], className)) {
+      const contentStart = match.index + match[0].length
+      const closePattern = new RegExp(`</${escapeRegex(match[1])}>`, 'ig')
+      closePattern.lastIndex = contentStart
+      const closeMatch = closePattern.exec(html)
+      const content = closeMatch ? html.slice(contentStart, closeMatch.index) : ''
+      const text = stripHtml(content)
+      if (text) return text
+    }
+  }
+
+  return ''
+}
+
+function extractMetaContent(html, propertyName) {
+  const pattern = /<meta\b([^>]*)>/gi
+
+  for (const match of html.matchAll(pattern)) {
+    const attrs = match[1]
+    const property = getAttrValue(attrs, 'property') || getAttrValue(attrs, 'name')
+    if (property === propertyName) {
+      return getAttrValue(attrs, 'content')
+    }
+  }
+
+  return ''
+}
+
+function extractPageFallbacks(html) {
+  return {
+    title: stripHtml(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]),
+    description: extractMetaContent(html, 'description') || extractMetaContent(html, 'og:description'),
+    imageUrl: extractMetaContent(html, 'og:image'),
+  }
 }
 
 function collectJsonLdBlocks(html) {
@@ -203,25 +305,33 @@ async function resolveAndValidate(url) {
   return parsed.href
 }
 
-export async function importRecipeFromUrl(url) {
-  const safeUrl = await resolveAndValidate(url)
-  const response = await fetch(safeUrl, {
-    headers: {
-      'user-agent': 'Mozilla/5.0 (compatible; MealSyncBot/1.0)',
-      accept: 'text/html,application/xhtml+xml',
-    },
-    redirect: 'follow',
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  })
+async function fetchText(url, accept = 'text/html,application/xhtml+xml') {
+  let response
+  try {
+    response = await fetch(url, {
+      headers: {
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        accept,
+        'accept-language': 'en-US,en;q=0.9',
+        'cache-control': 'no-cache',
+      },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    })
+  } catch {
+    throw new ImportRecipeError('Could not fetch the recipe page. The site may be blocking imports or timing out.', 'RECIPE_FETCH_FAILED', 502)
+  }
 
   if (!response.ok) {
-    throw new Error(`Unable to fetch recipe page (${response.status})`)
+    const error = new ImportRecipeError(`Unable to fetch recipe page (${response.status})`, 'RECIPE_FETCH_FAILED', 502)
+    error.status = response.status
+    throw error
   }
 
   // Reject responses that declare a size over our limit
   const contentLength = Number(response.headers.get('content-length') || 0)
   if (contentLength > MAX_RESPONSE_BYTES) {
-    throw new Error('Recipe page is too large to import')
+    throw new ImportRecipeError('Recipe page is too large to import', 'RECIPE_PAGE_TOO_LARGE', 413)
   }
 
   // Stream the body with a byte limit to protect against missing/lying content-length
@@ -235,34 +345,35 @@ export async function importRecipeFromUrl(url) {
     totalBytes += value.length
     if (totalBytes > MAX_RESPONSE_BYTES) {
       reader.cancel()
-      throw new Error('Recipe page is too large to import')
+      throw new ImportRecipeError('Recipe page is too large to import', 'RECIPE_PAGE_TOO_LARGE', 413)
     }
     chunks.push(value)
   }
 
-  const html = new TextDecoder().decode(Buffer.concat(chunks))
-  const recipeNode = findRecipeNode(collectJsonLdBlocks(html))
+  return new TextDecoder().decode(Buffer.concat(chunks))
+}
 
-  if (!recipeNode) {
-    throw new Error('No structured recipe data was found at that URL')
+function validateImportedRecipe(recipe) {
+  if (!recipe?.title || recipe.ingredients.length === 0 || recipe.instructions.length === 0) {
+    throw new ImportRecipeError('The page did not contain enough recipe information to import', 'RECIPE_INCOMPLETE', 422)
   }
 
+  return recipe
+}
+
+function recipeFromJsonLdNode(recipeNode, sourceUrl) {
   const ingredients = (recipeNode.recipeIngredient || [])
     .map(parseIngredientLine)
     .filter(ingredient => ingredient.name)
 
   const instructions = extractInstructionSteps(recipeNode.recipeInstructions)
 
-  if (!recipeNode.name || ingredients.length === 0 || instructions.length === 0) {
-    throw new Error('The page did not contain enough recipe information to import')
-  }
-
   const prepTime = parseDurationToMinutes(recipeNode.prepTime)
   const cookTime = parseDurationToMinutes(recipeNode.cookTime)
   const totalTime = parseDurationToMinutes(recipeNode.totalTime)
 
-  return {
-    title: String(recipeNode.name).trim(),
+  return validateImportedRecipe({
+    title: String(recipeNode.name || '').trim(),
     description: typeof recipeNode.description === 'string' ? recipeNode.description.trim() : undefined,
     imageUrl: extractImageUrl(recipeNode.image),
     prepTime: prepTime || Math.max(0, totalTime - cookTime),
@@ -271,7 +382,152 @@ export async function importRecipeFromUrl(url) {
     tags: uniqueValues(extractTags(recipeNode)).slice(0, 8),
     ingredients,
     instructions,
-    sourceUrl: url,
+    sourceUrl,
     credits: extractAuthor(recipeNode),
+  })
+}
+
+function extractWprmImage(html, fallbackImageUrl) {
+  const imageClassIndex = html.search(/class=["'][^"']*\bwprm-recipe-image\b/i)
+  const searchArea = imageClassIndex >= 0 ? html.slice(imageClassIndex, imageClassIndex + 3000) : html
+  const imageTag = searchArea.match(/<img\b[^>]*>/i)?.[0]
+  const src = getAttrValue(imageTag, 'src')
+
+  return src || fallbackImageUrl || undefined
+}
+
+function readWprmMinutes(html, key) {
+  const hours = Number(extractFirstTextByClass(html, `wprm-recipe-${key}_time-hours`).match(/\d+(?:\.\d+)?/)?.[0] || 0)
+  const minutes = Number(extractFirstTextByClass(html, `wprm-recipe-${key}_time-minutes`).match(/\d+(?:\.\d+)?/)?.[0] || 0)
+
+  return (Number.isFinite(hours) ? hours * 60 : 0) + (Number.isFinite(minutes) ? minutes : 0)
+}
+
+function parseWprmRecipe(html, sourceUrl, fallback = {}) {
+  const title = extractFirstTextByClass(html, 'wprm-recipe-name') || fallback.title
+  const description = extractFirstTextByClass(html, 'wprm-recipe-summary') || fallback.description
+  const ingredientItems = extractElementsByTagAndClass(html, 'li', 'wprm-recipe-ingredient')
+  const instructionItems = extractElementsByTagAndClass(html, 'li', 'wprm-recipe-instruction')
+
+  if (!title || ingredientItems.length === 0 || instructionItems.length === 0) {
+    return null
   }
+
+  const ingredients = ingredientItems
+    .map(item => {
+      const amount = extractFirstTextByClass(item, 'wprm-recipe-ingredient-amount')
+      const unit = extractFirstTextByClass(item, 'wprm-recipe-ingredient-unit')
+      const name = extractFirstTextByClass(item, 'wprm-recipe-ingredient-name')
+      const notes = extractFirstTextByClass(item, 'wprm-recipe-ingredient-notes')
+      const line = [amount, unit, name, notes].filter(Boolean).join(' ') || stripHtml(item)
+      return parseIngredientLine(line)
+    })
+    .filter(ingredient => ingredient.name)
+
+  const instructions = instructionItems
+    .map(item => extractFirstTextByClass(item, 'wprm-recipe-instruction-text') || stripHtml(item))
+    .filter(Boolean)
+
+  const prepTime = readWprmMinutes(html, 'prep')
+  const cookTime = readWprmMinutes(html, 'cook')
+  const totalTime = readWprmMinutes(html, 'total')
+
+  return validateImportedRecipe({
+    title,
+    description,
+    imageUrl: extractWprmImage(html, fallback.imageUrl),
+    prepTime: prepTime || Math.max(0, totalTime - cookTime),
+    cookTime: cookTime || totalTime || 20,
+    servings: parseServings(extractFirstTextByClass(html, 'wprm-recipe-servings')),
+    tags: uniqueValues(fallback.tags || []).slice(0, 8),
+    ingredients,
+    instructions,
+    sourceUrl,
+    credits: fallback.credits,
+  })
+}
+
+function getPostSlug(parsedUrl) {
+  const parts = parsedUrl.pathname
+    .split('/')
+    .map(part => part.trim())
+    .filter(Boolean)
+
+  const slug = parts.at(-1)
+  return slug?.replace(/\.html?$/i, '') || ''
+}
+
+function wordpressFallbackFromPost(post) {
+  const schemaGraph = post.yoast_head_json?.schema?.['@graph']
+  const article = Array.isArray(schemaGraph)
+    ? schemaGraph.find(node => node?.['@type'] === 'Article')
+    : null
+
+  return {
+    title: stripHtml(post.title?.rendered),
+    description: stripHtml(post.excerpt?.rendered) || post.yoast_head_json?.description,
+    imageUrl: post.yoast_head_json?.og_image?.[0]?.url || article?.thumbnailUrl,
+    tags: uniqueValues([
+      ...(Array.isArray(article?.articleSection) ? article.articleSection : []),
+      ...(Array.isArray(article?.keywords) ? article.keywords : []),
+    ]),
+    credits: post.yoast_head_json?.author || article?.author?.name,
+  }
+}
+
+async function importFromWordPressRest(safeUrl, sourceUrl) {
+  const parsedUrl = new URL(safeUrl)
+  const slug = getPostSlug(parsedUrl)
+  if (!slug) return null
+
+  try {
+    const endpoint = `${parsedUrl.origin}/wp-json/wp/v2/posts?slug=${encodeURIComponent(slug)}&_fields=title,content,excerpt,yoast_head_json`
+    const text = await fetchText(endpoint, 'application/json,text/html;q=0.9')
+    const posts = JSON.parse(text)
+    const post = Array.isArray(posts) ? posts[0] : null
+    const html = post?.content?.rendered
+
+    if (!html) return null
+
+    return parseWprmRecipe(html, sourceUrl, wordpressFallbackFromPost(post))
+  } catch (error) {
+    if (error instanceof SyntaxError) return null
+    if (error instanceof ImportRecipeError && error.code === 'RECIPE_FETCH_FAILED') return null
+    throw error
+  }
+}
+
+export async function importRecipeFromUrl(url) {
+  const safeUrl = await resolveAndValidate(url)
+  let html = ''
+  let fetchError = null
+
+  try {
+    html = await fetchText(safeUrl)
+  } catch (error) {
+    fetchError = error
+  }
+
+  if (html) {
+    const recipeNode = findRecipeNode(collectJsonLdBlocks(html))
+    if (recipeNode) {
+      return recipeFromJsonLdNode(recipeNode, url)
+    }
+
+    const wprmRecipe = parseWprmRecipe(html, url, extractPageFallbacks(html))
+    if (wprmRecipe) {
+      return wprmRecipe
+    }
+  }
+
+  const wordpressRecipe = await importFromWordPressRest(safeUrl, url)
+  if (wordpressRecipe) {
+    return wordpressRecipe
+  }
+
+  if (fetchError) {
+    throw fetchError
+  }
+
+  throw new ImportRecipeError('No structured recipe data was found at that URL', 'RECIPE_NOT_FOUND', 422)
 }
