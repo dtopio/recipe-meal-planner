@@ -307,6 +307,7 @@ router.post('/import', requireAuth, requireHousehold, asyncHandler(async (req, r
       name: ingredient.name,
     })),
     instructions: imported.instructions,
+    nutrition: normalizeNutritionInput(imported.nutrition),
     sourceUrl: imported.sourceUrl,
     credits: imported.credits,
     createdBy: req.auth.user.id,

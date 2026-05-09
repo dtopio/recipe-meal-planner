@@ -122,6 +122,41 @@ function extractPageFallbacks(html) {
   }
 }
 
+function parseNutritionNumber(value) {
+  if (value === null || value === undefined) return undefined
+
+  const match = String(value).replace(/,/g, '').match(/-?\d+(?:\.\d+)?/)
+  if (!match) return undefined
+
+  const number = Number(match[0])
+  return Number.isFinite(number) && number >= 0 ? number : undefined
+}
+
+function normalizeNutritionValues(values = {}) {
+  const nutrition = {
+    calories: parseNutritionNumber(values.calories),
+    protein: parseNutritionNumber(values.protein),
+    carbs: parseNutritionNumber(values.carbs),
+    fat: parseNutritionNumber(values.fat),
+  }
+
+  return Object.values(nutrition).some(value => Number.isFinite(value) && value > 0)
+    ? nutrition
+    : undefined
+}
+
+function extractJsonLdNutrition(recipeNode) {
+  const nutrition = recipeNode.nutrition
+  if (!nutrition || typeof nutrition !== 'object') return undefined
+
+  return normalizeNutritionValues({
+    calories: nutrition.calories || nutrition.Calories || nutrition.energy || nutrition.energyContent,
+    protein: nutrition.proteinContent || nutrition.protein || nutrition.Protein,
+    carbs: nutrition.carbohydrateContent || nutrition.carbohydrates || nutrition.carbs || nutrition.Carbohydrates,
+    fat: nutrition.fatContent || nutrition.fat || nutrition.Fat,
+  })
+}
+
 function collectJsonLdBlocks(html) {
   const matches = html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)
   const blocks = []
@@ -382,6 +417,7 @@ function recipeFromJsonLdNode(recipeNode, sourceUrl) {
     tags: uniqueValues(extractTags(recipeNode)).slice(0, 8),
     ingredients,
     instructions,
+    nutrition: extractJsonLdNutrition(recipeNode),
     sourceUrl,
     credits: extractAuthor(recipeNode),
   })
@@ -401,6 +437,26 @@ function readWprmMinutes(html, key) {
   const minutes = Number(extractFirstTextByClass(html, `wprm-recipe-${key}_time-minutes`).match(/\d+(?:\.\d+)?/)?.[0] || 0)
 
   return (Number.isFinite(hours) ? hours * 60 : 0) + (Number.isFinite(minutes) ? minutes : 0)
+}
+
+function extractWprmNutritionValue(html, key) {
+  const marker = `wprm-nutrition-label-text-nutrition-container-${key}`
+  const index = html.indexOf(marker)
+  if (index === -1) return undefined
+
+  const nextIndex = html.indexOf('wprm-nutrition-label-text-nutrition-container-', index + marker.length)
+  const section = html.slice(index, nextIndex === -1 ? index + 1200 : nextIndex)
+
+  return parseNutritionNumber(extractFirstTextByClass(section, 'wprm-nutrition-label-text-nutrition-value'))
+}
+
+function extractWprmNutrition(html) {
+  return normalizeNutritionValues({
+    calories: extractWprmNutritionValue(html, 'calories'),
+    protein: extractWprmNutritionValue(html, 'protein'),
+    carbs: extractWprmNutritionValue(html, 'carbohydrates') ?? extractWprmNutritionValue(html, 'carbs'),
+    fat: extractWprmNutritionValue(html, 'fat'),
+  })
 }
 
 function parseWprmRecipe(html, sourceUrl, fallback = {}) {
@@ -442,6 +498,7 @@ function parseWprmRecipe(html, sourceUrl, fallback = {}) {
     tags: uniqueValues(fallback.tags || []).slice(0, 8),
     ingredients,
     instructions,
+    nutrition: extractWprmNutrition(html),
     sourceUrl,
     credits: fallback.credits,
   })
