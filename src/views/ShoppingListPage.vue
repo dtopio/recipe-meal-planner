@@ -14,10 +14,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { CATEGORY_LABELS, CATEGORY_EMOJI, SHOPPING_CATEGORIES } from '@/types'
-import type { AddShoppingItemDTO, ShoppingListItem, ShoppingPeriod } from '@/types'
+import type { AddShoppingItemDTO, ShoppingCategory, ShoppingListItem, ShoppingPeriod } from '@/types'
 import { formatDateShort } from '@/utils/date'
 import { ingredientMatchKey } from '@/utils/recipe'
 import {
+  Archive,
   Plus,
   Search,
   X,
@@ -44,6 +45,10 @@ const { isOnline } = useOnline()
 
 const showAddForm = ref(false)
 const showCompleted = ref(false)
+const showPantryImport = ref(false)
+const addingCheckedToPantry = ref(false)
+const clearImportedShoppingItems = ref(false)
+const pantryImportRows = ref<PantryImportRow[]>([])
 const newItem = ref<AddShoppingItemDTO>({
   name: '',
   quantity: 1,
@@ -115,6 +120,20 @@ const pantryCoverageByKey = computed(() => {
 
   return coverage
 })
+const selectedPantryImportRows = computed(() => (
+  pantryImportRows.value.filter(row => row.selected && row.name.trim() && Number(row.quantity) > 0)
+))
+
+interface PantryImportRow {
+  itemId: string
+  selected: boolean
+  name: string
+  quantity: number
+  unit: string
+  category: ShoppingCategory
+  lowStockThreshold: number
+  expiresAt: string
+}
 
 onMounted(async () => {
   await Promise.all([
@@ -254,6 +273,88 @@ function getPantryCoverageLabel(item: ShoppingListItem) {
   if (!coverage) return ''
 
   return `In pantry: ${formatCompactQuantity(coverage.quantity)} ${coverage.unit || 'units'}`
+}
+
+function openPantryImportPanel() {
+  if (store.checkedItems.length === 0) {
+    toast('Check off shopping items before adding them to pantry')
+    return
+  }
+
+  pantryImportRows.value = store.checkedItems.map(item => ({
+    itemId: item.id,
+    selected: true,
+    name: item.name,
+    quantity: item.quantity,
+    unit: item.unit,
+    category: item.category,
+    lowStockThreshold: 1,
+    expiresAt: '',
+  }))
+  clearImportedShoppingItems.value = false
+  showPantryImport.value = true
+}
+
+function closePantryImportPanel() {
+  showPantryImport.value = false
+  pantryImportRows.value = []
+  clearImportedShoppingItems.value = false
+}
+
+async function handleAddCheckedToPantry() {
+  const rows = selectedPantryImportRows.value
+
+  if (rows.length === 0) {
+    toast('Select at least one valid item to add to pantry')
+    return
+  }
+
+  addingCheckedToPantry.value = true
+
+  try {
+    await pantry.loadItems()
+
+    let addedCount = 0
+    let updatedCount = 0
+
+    for (const row of rows) {
+      const name = row.name.trim()
+      const unit = row.unit.trim()
+      const quantity = Number(row.quantity)
+      const existing = pantry.items.find(item => ingredientMatchKey(item.name, item.unit) === ingredientMatchKey(name, unit))
+
+      if (existing) {
+        await pantry.updateItem({
+          id: existing.id,
+          quantity: Number((existing.quantity + quantity).toFixed(2)),
+        })
+        updatedCount += 1
+      } else {
+        await pantry.addItem({
+          name,
+          quantity,
+          unit,
+          category: row.category,
+          lowStockThreshold: Math.max(0, Number(row.lowStockThreshold) || 1),
+          expiresAt: row.expiresAt || undefined,
+        })
+        addedCount += 1
+      }
+    }
+
+    if (clearImportedShoppingItems.value) {
+      for (const row of rows) {
+        await store.removeItem(row.itemId)
+      }
+    }
+
+    closePantryImportPanel()
+    toast.success(`Pantry updated: ${addedCount} added, ${updatedCount} updated`)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to add checked items to pantry')
+  } finally {
+    addingCheckedToPantry.value = false
+  }
 }
 
 async function handleCopyList() {
@@ -460,6 +561,14 @@ function escapeHtml(value: string) {
         </Button>
         <Button @click="showAddForm = !showAddForm" class="shadow-md shadow-primary/10 press-scale shrink-0">
           <Plus class="mr-1.5 h-4 w-4" /> Add Item
+        </Button>
+        <Button
+          variant="outline"
+          class="press-scale shrink-0"
+          :disabled="store.checkedItems.length === 0"
+          @click="openPantryImportPanel"
+        >
+          <Archive class="mr-1.5 h-4 w-4" /> Add Checked to Pantry
         </Button>
         <Button
           variant="outline"
@@ -707,6 +816,96 @@ function escapeHtml(value: string) {
     </div>
   </Transition>
 
+  <Transition
+    enter-active-class="transition duration-200 ease-out"
+    enter-from-class="opacity-0 -translate-y-2"
+    enter-to-class="opacity-100 translate-y-0"
+    leave-active-class="transition duration-150 ease-in"
+    leave-from-class="opacity-100 translate-y-0"
+    leave-to-class="opacity-0 -translate-y-2"
+  >
+    <div v-if="showPantryImport" class="surface-card mb-5 p-5">
+      <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h3 class="text-sm font-bold text-foreground">Add checked items to pantry</h3>
+          <p class="mt-1 text-sm text-muted-foreground">
+            Review what gets saved. Matching pantry items with the same name and unit will be updated.
+          </p>
+        </div>
+        <Button type="button" variant="ghost" size="icon" class="shrink-0" @click="closePantryImportPanel">
+          <X class="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div class="overflow-hidden rounded-xl border border-border/60">
+        <div
+          v-for="row in pantryImportRows"
+          :key="row.itemId"
+          class="grid gap-3 border-b border-border/50 p-3 last:border-b-0 md:grid-cols-[auto_1fr_96px_104px_152px_120px_148px]"
+        >
+          <label class="flex items-center gap-2 text-sm font-medium text-foreground md:pt-2">
+            <input v-model="row.selected" type="checkbox" class="h-4 w-4 rounded border-border" />
+            <span class="md:hidden">Add</span>
+          </label>
+
+          <div class="space-y-1">
+            <label class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Item</label>
+            <Input v-model="row.name" class="h-10" />
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Qty</label>
+            <Input v-model.number="row.quantity" type="number" min="0.01" step="0.01" class="h-10" />
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Unit</label>
+            <Input v-model="row.unit" class="h-10" />
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Category</label>
+            <select v-model="row.category" class="h-10 w-full rounded-xl border border-border bg-card px-3 text-sm">
+              <option v-for="cat in SHOPPING_CATEGORIES" :key="cat" :value="cat">
+                {{ CATEGORY_EMOJI[cat] }} {{ CATEGORY_LABELS[cat] }}
+              </option>
+            </select>
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Low stock</label>
+            <Input v-model.number="row.lowStockThreshold" type="number" min="0" step="0.5" class="h-10" />
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Expires</label>
+            <Input v-model="row.expiresAt" type="date" class="h-10" />
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <label class="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+          <input v-model="clearImportedShoppingItems" type="checkbox" class="h-4 w-4 rounded border-border" />
+          Remove imported items from shopping
+        </label>
+
+        <div class="flex gap-2">
+          <Button type="button" variant="outline" @click="closePantryImportPanel">Cancel</Button>
+          <Button
+            type="button"
+            :disabled="addingCheckedToPantry || selectedPantryImportRows.length === 0"
+            @click="handleAddCheckedToPantry"
+          >
+            <Loader2 v-if="addingCheckedToPantry" class="mr-1.5 h-4 w-4 animate-spin" />
+            <Archive v-else class="mr-1.5 h-4 w-4" />
+            Add {{ selectedPantryImportRows.length }} to Pantry
+          </Button>
+        </div>
+      </div>
+    </div>
+  </Transition>
+
   <div v-if="store.loading && store.items.length === 0" class="space-y-3">
     <AppSkeleton v-for="i in 8" :key="i" class="h-16" />
   </div>
@@ -782,6 +981,14 @@ function escapeHtml(value: string) {
               @remove="handleRemoveItem(item.id)"
             />
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            class="mr-2"
+            @click="openPantryImportPanel"
+          >
+            <Archive class="mr-1.5 h-3.5 w-3.5" /> Add checked to pantry
+          </Button>
           <Button
             variant="outline"
             size="sm"
