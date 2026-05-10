@@ -201,7 +201,7 @@ function buildShareText() {
   if (remaining.length > 0) {
     lines.push('To buy:')
     for (const item of remaining) {
-      lines.push(`- ${item.quantity} ${item.unit}`.trimEnd() + ` ${item.name}`.replace(/\s+/g, ' ').trim())
+      lines.push(formatShareItemLine(item))
     }
     lines.push('')
   }
@@ -209,11 +209,16 @@ function buildShareText() {
   if (completed.length > 0) {
     lines.push('Completed:')
     for (const item of completed) {
-      lines.push(`- ${item.quantity} ${item.unit}`.trimEnd() + ` ${item.name}`.replace(/\s+/g, ' ').trim())
+      lines.push(formatShareItemLine(item))
     }
   }
 
   return lines.join('\n').trim()
+}
+
+function formatShareItemLine(item: ShoppingListItem) {
+  const base = `- ${item.quantity} ${item.unit}`.trimEnd() + ` ${item.name}`.replace(/\s+/g, ' ').trim()
+  return item.sourceRecipeName ? `${base} (for ${item.sourceRecipeName})` : base
 }
 
 async function handleCopyList() {
@@ -262,7 +267,7 @@ function handleDownloadCsv() {
   }
 
   const rows = [
-    ['Status', 'Category', 'Name', 'Quantity', 'Unit', 'Source'],
+    ['Status', 'Category', 'Name', 'Quantity', 'Unit', 'For'],
     ...exportItems.value.map(item => [
       item.checked ? 'Completed' : 'Open',
       CATEGORY_LABELS[item.category],
@@ -321,7 +326,10 @@ function buildPrintHtml() {
         ${items.map(item => `
           <li class="${item.checked ? 'checked' : ''}">
             <span class="box">${item.checked ? 'x' : ''}</span>
-            <span class="name">${escapeHtml(item.name)}</span>
+            <span>
+              <span class="name">${escapeHtml(item.name)}</span>
+              ${item.sourceRecipeName ? `<span class="source">For: ${escapeHtml(item.sourceRecipeName)}</span>` : ''}
+            </span>
             <span class="qty">${escapeHtml(formatExportQuantity(item.quantity, item.unit))}</span>
           </li>
         `).join('')}
@@ -346,6 +354,7 @@ function buildPrintHtml() {
           .box { border: 1px solid #6b7280; display: inline-flex; height: 18px; justify-content: center; line-height: 16px; width: 18px; }
           .checked { color: #6b7280; text-decoration: line-through; }
           .name { font-weight: 700; }
+          .source { color: #4b5563; display: block; font-size: 11px; margin-top: 2px; }
           .qty { color: #4b5563; font-size: 13px; }
         </style>
       </head>

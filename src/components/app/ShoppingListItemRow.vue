@@ -39,8 +39,8 @@ defineEmits<{
           {{ item.quantity }} {{ item.unit }}
         </span>
 
-        <span v-if="item.sourceRecipeName" class="truncate text-xs text-primary/60">
-          {{ item.sourceRecipeName }}
+        <span v-if="item.sourceRecipeName" class="max-w-full truncate rounded-full bg-primary/8 px-2 py-0.5 text-[11px] font-semibold text-primary/80">
+          For: {{ item.sourceRecipeName }}
         </span>
 
         <span
