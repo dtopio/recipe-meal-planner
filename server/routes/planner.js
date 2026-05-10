@@ -30,6 +30,7 @@ const plannerSchema = z.object({
 
 const plannerAssignmentSchema = plannerSchema.extend({
   recipeId: z.string().min(1),
+  servings: z.number().positive().max(50).optional(),
 })
 
 const plannerSlotUpdateSchema = z.object({
@@ -260,7 +261,7 @@ router.put('/slot', requireAuth, requireHousehold, asyncHandler(async (req, res)
     mealType: dto.mealType,
     recipeId: dto.recipeId,
     notes: '',
-    servings: recipe.servings,
+    servings: dto.servings || recipe.servings,
     repeatWeekly: false,
   }
 
