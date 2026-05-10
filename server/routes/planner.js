@@ -40,12 +40,15 @@ const plannerSlotUpdateSchema = z.object({
   message: 'No planner updates were provided',
 })
 
+const dateKeySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+
 const plannerWeekActionSchema = z.object({
-  weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  weekStart: dateKeySchema.optional(),
 })
 
 const plannerAiDraftSchema = plannerWeekActionSchema.extend({
   mode: z.enum(['balanced', 'pantry-first', 'quick-simple']).default('balanced'),
+  dates: z.array(dateKeySchema).max(7).optional(),
 })
 
 const nutritionQuerySchema = z.object({
@@ -111,19 +114,33 @@ router.post('/ai-draft', requireAuth, requireHousehold, asyncHandler(async (req,
   const preferences = await getHouseholdPreferences(req.householdId)
   const slots = await getMealSlotsForWeek(req.householdId, weekStart)
   const weekDates = getWeekDates(weekStart)
-  const emptySlots = weekDates
+  const requestedDates = dto.dates?.length
+    ? new Set(dto.dates.filter(date => weekDates.includes(date)))
+    : null
+
+  if (dto.dates?.length && requestedDates?.size === 0) {
+    return sendError(res, 400, 'Selected dates are outside this planner week', 'INVALID_DATES')
+  }
+
+  const targetDates = requestedDates
+    ? weekDates.filter(date => requestedDates.has(date))
+    : weekDates
+  const emptySlots = targetDates
     .flatMap(date => preferences.mealPeriods.map(mealType => ({ date, mealType })))
     .filter(candidate => !slots.some(slot => slot.date === candidate.date && slot.mealType === candidate.mealType))
     .slice(0, 42)
 
   if (emptySlots.length === 0) {
+    const isPartialDraft = Boolean(dto.dates?.length)
     return sendOk(res, {
       mode: dto.mode,
       weekStart,
-      summary: 'There are no empty planner slots for this week.',
+      summary: isPartialDraft
+        ? 'There are no empty planner slots for the selected day.'
+        : 'There are no empty planner slots for this week.',
       slots: [],
       shoppingHints: [],
-      warnings: ['All enabled meal periods already have meals.'],
+      warnings: [isPartialDraft ? 'The selected day already has meals in every enabled meal period.' : 'All enabled meal periods already have meals.'],
       model: 'none',
       generatedAt: new Date().toISOString(),
     })
@@ -138,6 +155,7 @@ router.post('/ai-draft', requireAuth, requireHousehold, asyncHandler(async (req,
   const input = {
     mode: dto.mode,
     weekStart,
+    targetDates,
     emptySlots,
     dietaryPreferences: preferences.dietaryPreferences,
     mealPeriods: preferences.mealPeriods,

@@ -143,20 +143,69 @@ export const usePlannerStore = defineStore('planner', () => {
     return data
   }
 
+  async function requestAiDraft(mode: AiPlannerMode, weekStart: string, dates?: string[]) {
+    const { data } = await apiClient<AiPlannerDraft>('/planner/ai-draft', {
+      method: 'POST',
+      body: JSON.stringify({
+        mode,
+        weekStart,
+        ...(dates?.length ? { dates } : {}),
+      }),
+    })
+
+    return data
+  }
+
   async function generateAiDraft(mode: AiPlannerMode, weekStart = currentWeekStart.value) {
     aiDraftLoading.value = true
     aiDraftError.value = null
 
     try {
-      const { data } = await apiClient<AiPlannerDraft>('/planner/ai-draft', {
-        method: 'POST',
-        body: JSON.stringify({ mode, weekStart }),
-      })
-
+      const data = await requestAiDraft(mode, weekStart)
       aiDraft.value = data
       return data
     } catch (e: unknown) {
       aiDraftError.value = getErrorMessage(e, 'Failed to generate AI planner draft')
+      throw new Error(aiDraftError.value)
+    } finally {
+      aiDraftLoading.value = false
+    }
+  }
+
+  async function regenerateAiDraftDay(date: string, mode: AiPlannerMode, weekStart = currentWeekStart.value) {
+    aiDraftLoading.value = true
+    aiDraftError.value = null
+
+    try {
+      const data = await requestAiDraft(mode, weekStart, [date])
+
+      if (!aiDraft.value || aiDraft.value.weekStart !== data.weekStart) {
+        aiDraft.value = data
+        return data
+      }
+
+      aiDraft.value = {
+        ...aiDraft.value,
+        mode: data.mode,
+        weekStart: data.weekStart,
+        slots: [
+          ...aiDraft.value.slots.filter(slot => slot.date !== date),
+          ...data.slots,
+        ].sort((a, b) => `${a.date}:${a.mealType}`.localeCompare(`${b.date}:${b.mealType}`)),
+        shoppingHints: mergeUniqueBy(
+          aiDraft.value.shoppingHints,
+          data.shoppingHints,
+          hint => `${hint.ingredient.toLowerCase()}::${hint.reason.toLowerCase()}`,
+          8,
+        ),
+        warnings: mergeUniqueBy(aiDraft.value.warnings, data.warnings, warning => warning, 8),
+        model: data.model,
+        generatedAt: data.generatedAt,
+      }
+
+      return data
+    } catch (e: unknown) {
+      aiDraftError.value = getErrorMessage(e, 'Failed to regenerate AI planner day')
       throw new Error(aiDraftError.value)
     } finally {
       aiDraftLoading.value = false
@@ -207,10 +256,28 @@ export const usePlannerStore = defineStore('planner', () => {
     copyLastWeek,
     applyRecurringMeals,
     generateAiDraft,
+    regenerateAiDraftDay,
     clearAiDraft,
     navigateWeek,
   }
 })
+
+function mergeUniqueBy<T>(current: T[], incoming: T[], getKey: (value: T) => string, limit: number) {
+  const seen = new Set<string>()
+  const merged: T[] = []
+
+  for (const value of [...current, ...incoming]) {
+    const key = getKey(value)
+    if (seen.has(key)) continue
+
+    seen.add(key)
+    merged.push(value)
+
+    if (merged.length >= limit) break
+  }
+
+  return merged
+}
 
 function getErrorMessage(error: unknown, fallback: string): string {
   if (typeof error === 'object' && error && 'message' in error) {

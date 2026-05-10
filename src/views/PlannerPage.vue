@@ -30,6 +30,7 @@ const copySourceSlot = ref<MealSlot | null>(null)
 const copySourceDate = ref<string | null>(null)
 const aiMode = ref<AiPlannerMode>('balanced')
 const selectedAiSlotKeys = ref<Record<string, boolean>>({})
+const regeneratingAiDate = ref<string | null>(null)
 
 const aiModeOptions: Array<{ value: AiPlannerMode; label: string }> = [
   { value: 'balanced', label: 'Balanced' },
@@ -316,6 +317,7 @@ async function handleGenerateShoppingList() {
 
 async function handleGenerateAiPlan() {
   try {
+    regeneratingAiDate.value = null
     const draft = await planner.generateAiDraft(aiMode.value)
     selectedAiSlotKeys.value = Object.fromEntries(draft.slots.map(slot => [getAiSlotKey(slot), true]))
 
@@ -327,6 +329,30 @@ async function handleGenerateAiPlan() {
     toast.success(`AI drafted ${draft.slots.length} meal suggestions`)
   } catch (error) {
     toast.error(error instanceof Error ? error.message : 'Failed to generate AI planner draft')
+  }
+}
+
+async function handleRegenerateAiDay(date: string) {
+  try {
+    regeneratingAiDate.value = date
+    const previousSelections = { ...selectedAiSlotKeys.value }
+    const draft = await planner.regenerateAiDraftDay(date, aiMode.value)
+
+    selectedAiSlotKeys.value = Object.fromEntries((planner.aiDraft?.slots || []).map(slot => {
+      const key = getAiSlotKey(slot)
+      return [key, slot.date === date ? true : Boolean(previousSelections[key])]
+    }))
+
+    if (draft.slots.length === 0) {
+      toast(`No empty slots to regenerate for ${getDayNameShort(date)}`)
+      return
+    }
+
+    toast.success(`Regenerated ${getDayNameShort(date)} with ${draft.slots.length} suggestions`)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to regenerate AI planner day')
+  } finally {
+    regeneratingAiDate.value = null
   }
 }
 
@@ -486,6 +512,21 @@ function sortRecipesByCreatedAt(items: Recipe[]) {
                 Apply selected
               </Button>
             </div>
+          </div>
+
+          <div class="flex flex-wrap gap-2">
+            <Button
+              v-for="date in planner.weekDates"
+              :key="`regen-${date}`"
+              variant="outline"
+              size="sm"
+              :disabled="planner.aiDraftLoading || !hasEmptySlots"
+              @click="handleRegenerateAiDay(date)"
+            >
+              <Loader2 v-if="regeneratingAiDate === date" class="mr-1.5 h-4 w-4 animate-spin" />
+              <RefreshCw v-else class="mr-1.5 h-4 w-4" />
+              Regen {{ getDayNameShort(date) }}
+            </Button>
           </div>
 
           <div v-if="planner.aiDraft.warnings.length" class="flex flex-wrap gap-2">
