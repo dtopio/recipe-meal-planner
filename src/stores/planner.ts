@@ -66,13 +66,14 @@ export const usePlannerStore = defineStore('planner', () => {
     return loadPromise
   }
 
-  async function assignMeal(date: string, mealType: MealType, recipe: Recipe) {
+  async function assignMeal(date: string, mealType: MealType, recipe: Recipe, servings?: number) {
     const { data } = await apiClient<MealSlot>('/planner/slot', {
       method: 'PUT',
       body: JSON.stringify({
         date,
         mealType,
         recipeId: recipe.id,
+        ...(servings ? { servings } : {}),
       }),
     })
 

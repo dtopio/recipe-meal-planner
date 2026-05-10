@@ -62,6 +62,7 @@ const hasEmptySlots = computed(() => (
 const selectedAiSuggestions = computed(() => (
   planner.aiDraft?.slots.filter(slot => selectedAiSlotKeys.value[getAiSlotKey(slot)]) || []
 ))
+const defaultPlannerServings = computed(() => Math.min(Math.max(household.memberCount || 1, 1), 50))
 
 onMounted(async () => {
   await Promise.all([
@@ -89,7 +90,7 @@ async function onDrop(date: string, mealType: MealType, event: DragEvent) {
   if (!draggedRecipe.value) return
 
   try {
-    await planner.assignMeal(date, mealType, draggedRecipe.value)
+    await planner.assignMeal(date, mealType, draggedRecipe.value, defaultPlannerServings.value)
   } catch (error) {
     toast.error(error instanceof Error ? error.message : 'Failed to assign meal')
   } finally {
@@ -115,7 +116,7 @@ async function assignRecipe(recipe: Recipe) {
   if (!assignTarget.value) return
 
   try {
-    await planner.assignMeal(assignTarget.value.date, assignTarget.value.mealType, recipe)
+    await planner.assignMeal(assignTarget.value.date, assignTarget.value.mealType, recipe, defaultPlannerServings.value)
     showRecipePanel.value = false
     assignTarget.value = null
   } catch (error) {
@@ -192,12 +193,8 @@ async function copyDayToDate(targetDate: string) {
         continue
       }
 
-      const copiedSlot = await planner.assignMeal(targetDate, sourceSlot.mealType, sourceSlot.recipe)
       const sourceServings = sourceSlot.servings || sourceSlot.recipe.servings || 1
-
-      if ((copiedSlot.servings || copiedSlot.recipe?.servings || 1) !== sourceServings) {
-        await planner.updateMealServings(copiedSlot.id, sourceServings)
-      }
+      await planner.assignMeal(targetDate, sourceSlot.mealType, sourceSlot.recipe, sourceServings)
 
       copiedCount += 1
     }
@@ -223,12 +220,8 @@ async function copyMealToSlot(date: string, mealType: MealType) {
   }
 
   try {
-    const copiedSlot = await planner.assignMeal(date, mealType, source.recipe)
     const sourceServings = source.servings || source.recipe.servings || 1
-
-    if ((copiedSlot.servings || copiedSlot.recipe?.servings || 1) !== sourceServings) {
-      await planner.updateMealServings(copiedSlot.id, sourceServings)
-    }
+    await planner.assignMeal(date, mealType, source.recipe, sourceServings)
 
     copySourceSlot.value = null
     toast.success(`Copied ${source.recipe.title}`)
@@ -351,7 +344,7 @@ async function handleApplyAiSuggestions() {
       const recipe = recipes.recipes.find(candidate => candidate.id === suggestion.recipeId)
       if (!recipe) continue
 
-      await planner.assignMeal(suggestion.date, suggestion.mealType, recipe)
+      await planner.assignMeal(suggestion.date, suggestion.mealType, recipe, defaultPlannerServings.value)
       appliedCount += 1
     }
 
