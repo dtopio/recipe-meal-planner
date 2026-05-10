@@ -584,7 +584,7 @@ function formatShoppingSourceLabel(sources = []) {
 export async function getShoppingSummaryInput(householdId, weekStart = '', period = 'all') {
   const shoppingItems = await db.getShoppingItems(householdId)
   const pantryItems = await db.getPantryItems(householdId)
-  const periodShoppingItems = filterShoppingItemsByPeriod(shoppingItems, period, weekStart)
+  const periodShoppingItems = filterShoppingSummaryItemsByPeriod(shoppingItems, period, weekStart)
 
   return {
     shoppingItems: periodShoppingItems.filter(s => !s.checked).map(serializeShoppingSummaryItem),
@@ -740,6 +740,35 @@ function mergeSuggestionLists(primary = [], secondary = [], limit = 5) {
   }
 
   return merged
+}
+
+function filterShoppingSummaryItemsByPeriod(items, period, weekStart) {
+  if (period === 'all') return items
+
+  if (period === 'day') {
+    const today = toDateKey()
+    return items.filter(item => getShoppingItemDateKey(item) === today)
+  }
+
+  if (period === 'week') {
+    const start = weekStart || toDateKey(startOfWeek())
+    const end = addDays(start, 6)
+    return items.filter(item => {
+      const itemDate = getShoppingItemDateKey(item)
+      return itemDate >= start && itemDate <= end
+    })
+  }
+
+  if (period === 'month') {
+    const monthPrefix = toDateKey().slice(0, 7)
+    return items.filter(item => getShoppingItemDateKey(item).startsWith(monthPrefix))
+  }
+
+  return items
+}
+
+function getShoppingItemDateKey(item) {
+  return toDateKey(new Date(item.addedAt))
 }
 
 export function filterShoppingItemsByPeriod(items, period, weekStart) {
