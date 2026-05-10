@@ -501,6 +501,10 @@ export async function buildShoppingGeneration(householdId, weekStart) {
     if (!slot.recipe) continue
 
     const scaleFactor = (slot.servings || 1) / (slot.recipe.servings || 1)
+    const source = {
+      recipeId: slot.recipeId,
+      recipeName: slot.recipe.title,
+    }
 
     for (const ing of slot.recipe.ingredients || []) {
       const key = ingredientMatchKey(ing.name, ing.unit)
@@ -510,10 +514,11 @@ export async function buildShoppingGeneration(householdId, weekStart) {
       }
 
       if (!ingredients[key]) {
-        ingredients[key] = { ...scaled, count: 1 }
+        ingredients[key] = { ...scaled, count: 1, sources: [source] }
       } else {
         ingredients[key].quantity += scaled.quantity
         ingredients[key].count += 1
+        ingredients[key].sources.push(source)
       }
     }
   }
@@ -535,6 +540,8 @@ export async function buildShoppingGeneration(householdId, weekStart) {
       unit: ing.unit,
       category: guessShoppingCategory(ing.name),
       checked: false,
+      sourceRecipeId: getSingleShoppingSourceId(ing.sources),
+      sourceRecipeName: formatShoppingSourceLabel(ing.sources),
       generated: true,
       sourceWeekStart: weekStart,
       addedAt: nowIso(),
@@ -548,6 +555,30 @@ export async function buildShoppingGeneration(householdId, weekStart) {
     mergedIngredientCount,
     pantryCoveredCount,
   }
+}
+
+function getSingleShoppingSourceId(sources = []) {
+  const uniqueIds = new Set(sources.map(source => source.recipeId).filter(Boolean))
+  return uniqueIds.size === 1 ? Array.from(uniqueIds)[0] : undefined
+}
+
+function formatShoppingSourceLabel(sources = []) {
+  const counts = new Map()
+
+  for (const source of sources) {
+    if (!source.recipeName) continue
+    counts.set(source.recipeName, (counts.get(source.recipeName) || 0) + 1)
+  }
+
+  const labels = Array.from(counts.entries()).map(([name, count]) => (
+    count > 1 ? `${name} x${count}` : name
+  ))
+
+  if (labels.length <= 2) {
+    return labels.join(' + ')
+  }
+
+  return `${labels.slice(0, 2).join(' + ')} + ${labels.length - 2} more`
 }
 
 export async function getShoppingSummaryInput(householdId) {
