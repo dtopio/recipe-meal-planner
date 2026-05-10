@@ -243,6 +243,32 @@ export interface PlannerBatchActionSummary {
   slots: MealSlot[]
 }
 
+export type AiPlannerMode = 'balanced' | 'pantry-first' | 'quick-simple'
+
+export interface AiPlannerSlotSuggestion {
+  date: string
+  mealType: MealType
+  recipeId: string
+  confidence: 'high' | 'medium' | 'low'
+  reason: string
+}
+
+export interface AiPlannerShoppingHint {
+  ingredient: string
+  reason: string
+}
+
+export interface AiPlannerDraft {
+  mode: AiPlannerMode
+  weekStart: string
+  summary: string
+  slots: AiPlannerSlotSuggestion[]
+  shoppingHints: AiPlannerShoppingHint[]
+  warnings: string[]
+  model: string
+  generatedAt: string
+}
+
 export interface WeeklyNutritionMeal {
   slotId: string
   mealType: MealType

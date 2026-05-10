@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { MealSlot, MealType, PlannerBatchActionSummary, Recipe, WeekPlan, ApiError } from '@/types'
+import type { AiPlannerDraft, AiPlannerMode, MealSlot, MealType, PlannerBatchActionSummary, Recipe, WeekPlan, ApiError } from '@/types'
 import { apiClient } from '@/services/api/client'
 import { getStartOfWeekDateKey, getTodayDateKey } from '@/utils/date'
 
@@ -10,6 +10,9 @@ export const usePlannerStore = defineStore('planner', () => {
   const error = ref<string | null>(null)
   const updatingSlotIds = ref<Record<string, boolean>>({})
   const currentWeekStart = ref(getStartOfWeekDateKey())
+  const aiDraft = ref<AiPlannerDraft | null>(null)
+  const aiDraftLoading = ref(false)
+  const aiDraftError = ref<string | null>(null)
   let loadPromise: Promise<void> | null = null
 
   const weekDates = computed(() => {
@@ -139,6 +142,31 @@ export const usePlannerStore = defineStore('planner', () => {
     return data
   }
 
+  async function generateAiDraft(mode: AiPlannerMode, weekStart = currentWeekStart.value) {
+    aiDraftLoading.value = true
+    aiDraftError.value = null
+
+    try {
+      const { data } = await apiClient<AiPlannerDraft>('/planner/ai-draft', {
+        method: 'POST',
+        body: JSON.stringify({ mode, weekStart }),
+      })
+
+      aiDraft.value = data
+      return data
+    } catch (e: unknown) {
+      aiDraftError.value = getErrorMessage(e, 'Failed to generate AI planner draft')
+      throw new Error(aiDraftError.value)
+    } finally {
+      aiDraftLoading.value = false
+    }
+  }
+
+  function clearAiDraft() {
+    aiDraft.value = null
+    aiDraftError.value = null
+  }
+
   async function navigateWeek(direction: 'prev' | 'next') {
     const start = new Date(currentWeekStart.value + 'T00:00:00')
     start.setDate(start.getDate() + (direction === 'next' ? 7 : -7))
@@ -161,6 +189,9 @@ export const usePlannerStore = defineStore('planner', () => {
     error,
     updatingSlotIds,
     currentWeekStart,
+    aiDraft,
+    aiDraftLoading,
+    aiDraftError,
     weekDates,
     slotsByDate,
     getSlots,
@@ -174,6 +205,8 @@ export const usePlannerStore = defineStore('planner', () => {
     setMealRecurring,
     copyLastWeek,
     applyRecurringMeals,
+    generateAiDraft,
+    clearAiDraft,
     navigateWeek,
   }
 })

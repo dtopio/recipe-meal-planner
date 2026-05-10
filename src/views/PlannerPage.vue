@@ -12,8 +12,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { formatDateShort, getDayName, getDayNameShort, isToday } from '@/utils/date'
 import { formatMealPeriodLabel, getMealPeriodDisplay, getMealPeriods } from '@/utils/meal-periods'
-import type { MealSlot, MealType, Recipe } from '@/types'
-import { ChevronLeft, ChevronRight, Search, X, BookOpen, ShoppingCart, Copy, RefreshCw } from 'lucide-vue-next'
+import type { AiPlannerMode, AiPlannerSlotSuggestion, MealSlot, MealType, Recipe } from '@/types'
+import { ChevronLeft, ChevronRight, Search, X, BookOpen, ShoppingCart, Copy, RefreshCw, Sparkles, Loader2 } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 
 const router = useRouter()
@@ -27,6 +27,15 @@ const recipeSearch = ref('')
 const assignTarget = ref<{ date: string; mealType: MealType } | null>(null)
 const draggedRecipe = ref<Recipe | null>(null)
 const copySourceSlot = ref<MealSlot | null>(null)
+const copySourceDate = ref<string | null>(null)
+const aiMode = ref<AiPlannerMode>('balanced')
+const selectedAiSlotKeys = ref<Record<string, boolean>>({})
+
+const aiModeOptions: Array<{ value: AiPlannerMode; label: string }> = [
+  { value: 'balanced', label: 'Balanced' },
+  { value: 'pantry-first', label: 'Use pantry first' },
+  { value: 'quick-simple', label: 'Quick/simple' },
+]
 
 const filteredRecipes = computed(() => {
   const q = recipeSearch.value.toLowerCase()
@@ -44,6 +53,14 @@ const summaryCounts = computed(() => (
     counts[mealType] = planner.weekDates.reduce((sum, date) => sum + getMealSlots(date, mealType).length, 0)
     return counts
   }, {})
+))
+
+const hasEmptySlots = computed(() => (
+  planner.weekDates.some(date => mealTypes.value.some(mealType => getMealSlots(date, mealType).length === 0))
+))
+
+const selectedAiSuggestions = computed(() => (
+  planner.aiDraft?.slots.filter(slot => selectedAiSlotKeys.value[getAiSlotKey(slot)]) || []
 ))
 
 onMounted(async () => {
@@ -126,6 +143,74 @@ function handleStartCopy(slot: MealSlot) {
 
 function cancelCopyMeal() {
   copySourceSlot.value = null
+}
+
+function getDaySlots(date: string) {
+  return mealTypes.value.flatMap(mealType => getMealSlots(date, mealType))
+}
+
+async function handleCopyDayClick(date: string) {
+  if (copySourceDate.value) {
+    if (copySourceDate.value === date) {
+      copySourceDate.value = null
+      return
+    }
+
+    await copyDayToDate(date)
+    return
+  }
+
+  if (getDaySlots(date).filter(slot => slot.recipe).length === 0) {
+    toast('Add meals to this day before copying it')
+    return
+  }
+
+  copySourceDate.value = date
+  copySourceSlot.value = null
+  showRecipePanel.value = false
+  toast('Choose another day to paste this day plan')
+}
+
+function cancelCopyDay() {
+  copySourceDate.value = null
+}
+
+async function copyDayToDate(targetDate: string) {
+  const sourceDate = copySourceDate.value
+  if (!sourceDate || sourceDate === targetDate) return
+
+  const sourceSlots = getDaySlots(sourceDate).filter(slot => slot.recipe)
+  let copiedCount = 0
+  let skippedCount = 0
+
+  try {
+    for (const sourceSlot of sourceSlots) {
+      if (!sourceSlot.recipe) continue
+
+      if (getMealSlots(targetDate, sourceSlot.mealType).length >= 3) {
+        skippedCount += 1
+        continue
+      }
+
+      const copiedSlot = await planner.assignMeal(targetDate, sourceSlot.mealType, sourceSlot.recipe)
+      const sourceServings = sourceSlot.servings || sourceSlot.recipe.servings || 1
+
+      if ((copiedSlot.servings || copiedSlot.recipe?.servings || 1) !== sourceServings) {
+        await planner.updateMealServings(copiedSlot.id, sourceServings)
+      }
+
+      copiedCount += 1
+    }
+
+    copySourceDate.value = null
+    toast.success(
+      skippedCount > 0
+        ? `Copied ${copiedCount} meals, skipped ${skippedCount} full slots`
+        : `Copied ${copiedCount} meals`,
+    )
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to copy day')
+  }
 }
 
 async function copyMealToSlot(date: string, mealType: MealType) {
@@ -236,6 +321,60 @@ async function handleGenerateShoppingList() {
   }
 }
 
+async function handleGenerateAiPlan() {
+  try {
+    const draft = await planner.generateAiDraft(aiMode.value)
+    selectedAiSlotKeys.value = Object.fromEntries(draft.slots.map(slot => [getAiSlotKey(slot), true]))
+
+    if (draft.slots.length === 0) {
+      toast('AI did not find empty slots to fill')
+      return
+    }
+
+    toast.success(`AI drafted ${draft.slots.length} meal suggestions`)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to generate AI planner draft')
+  }
+}
+
+async function handleApplyAiSuggestions() {
+  const suggestions = selectedAiSuggestions.value
+  if (suggestions.length === 0) {
+    toast('Select at least one AI suggestion to apply')
+    return
+  }
+
+  let appliedCount = 0
+
+  try {
+    for (const suggestion of suggestions) {
+      const recipe = recipes.recipes.find(candidate => candidate.id === suggestion.recipeId)
+      if (!recipe) continue
+
+      await planner.assignMeal(suggestion.date, suggestion.mealType, recipe)
+      appliedCount += 1
+    }
+
+    planner.clearAiDraft()
+    selectedAiSlotKeys.value = {}
+    toast.success(`Applied ${appliedCount} AI meal suggestions`)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to apply AI suggestions')
+  }
+}
+
+function getAiSlotKey(slot: AiPlannerSlotSuggestion) {
+  return `${slot.date}::${slot.mealType}`
+}
+
+function getRecipeTitle(recipeId: string) {
+  return recipes.recipes.find(recipe => recipe.id === recipeId)?.title || 'Recipe unavailable'
+}
+
+function setAllAiSuggestions(selected: boolean) {
+  selectedAiSlotKeys.value = Object.fromEntries((planner.aiDraft?.slots || []).map(slot => [getAiSlotKey(slot), selected]))
+}
+
 function sortRecipesByCreatedAt(items: Recipe[]) {
   return [...items].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 }
@@ -259,6 +398,10 @@ function sortRecipesByCreatedAt(items: Recipe[]) {
         </Button>
         <Button variant="outline" size="sm" @click="handleApplyRecurringMeals" class="press-scale">
           <RefreshCw class="w-4 h-4 mr-1.5" /> Apply Recurring
+        </Button>
+        <Button variant="outline" size="sm" :disabled="planner.aiDraftLoading || !hasEmptySlots" @click="handleGenerateAiPlan" class="press-scale">
+          <Loader2 v-if="planner.aiDraftLoading" class="w-4 h-4 mr-1.5 animate-spin" />
+          <Sparkles v-else class="w-4 h-4 mr-1.5" /> AI Fill
         </Button>
         <Button size="sm" class="hidden lg:inline-flex shadow-sm" @click="showRecipePanel = !showRecipePanel">
           <BookOpen class="w-4 h-4 mr-1.5" /> Recipe Library
@@ -294,6 +437,114 @@ function sortRecipesByCreatedAt(items: Recipe[]) {
       </Button>
     </div>
 
+    <div
+      v-if="copySourceDate"
+      class="mb-4 flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/[0.04] p-4 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div class="min-w-0">
+        <p class="text-sm font-bold text-foreground">Copying {{ formatDateShort(copySourceDate) }}</p>
+        <p class="text-xs text-muted-foreground">Choose another day header to paste this day plan.</p>
+      </div>
+      <Button variant="outline" size="sm" class="shrink-0" @click="cancelCopyDay">
+        Cancel
+      </Button>
+    </div>
+
+    <div class="mb-4 surface-card p-4">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <Sparkles class="h-4 w-4 text-primary" />
+            <h2 class="text-sm font-bold tracking-tight text-foreground">AI Planner Draft</h2>
+          </div>
+          <p class="mt-1 text-xs text-muted-foreground">
+            Generates a preview for empty slots only. Nothing is saved until you apply selected meals.
+          </p>
+        </div>
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <select
+            v-model="aiMode"
+            class="h-9 rounded-xl border border-border bg-card px-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option v-for="option in aiModeOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+          <Button variant="outline" size="sm" :disabled="planner.aiDraftLoading || !hasEmptySlots" @click="handleGenerateAiPlan">
+            <Loader2 v-if="planner.aiDraftLoading" class="mr-1.5 h-4 w-4 animate-spin" />
+            <Sparkles v-else class="mr-1.5 h-4 w-4" /> Generate Draft
+          </Button>
+        </div>
+      </div>
+
+      <div v-if="planner.aiDraft || planner.aiDraftError" class="mt-4 border-t border-border/50 pt-4">
+        <div v-if="planner.aiDraft" class="space-y-4">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p class="text-sm font-semibold text-foreground">{{ planner.aiDraft.summary }}</p>
+              <p class="mt-1 text-xs text-muted-foreground">
+                {{ planner.aiDraft.slots.length }} suggestions / {{ planner.aiDraft.model }}
+              </p>
+            </div>
+            <div class="flex gap-2">
+              <Button variant="outline" size="sm" @click="setAllAiSuggestions(true)">Select all</Button>
+              <Button variant="outline" size="sm" @click="setAllAiSuggestions(false)">Clear</Button>
+              <Button size="sm" :disabled="selectedAiSuggestions.length === 0" @click="handleApplyAiSuggestions">
+                Apply selected
+              </Button>
+            </div>
+          </div>
+
+          <div v-if="planner.aiDraft.warnings.length" class="flex flex-wrap gap-2">
+            <span
+              v-for="warning in planner.aiDraft.warnings"
+              :key="warning"
+              class="rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700"
+            >
+              {{ warning }}
+            </span>
+          </div>
+
+          <div v-if="planner.aiDraft.slots.length" class="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+            <label
+              v-for="slot in planner.aiDraft.slots"
+              :key="getAiSlotKey(slot)"
+              class="flex cursor-pointer gap-3 rounded-xl border border-border/60 bg-card/70 p-3.5 transition-colors hover:border-primary/30"
+            >
+              <input
+                v-model="selectedAiSlotKeys[getAiSlotKey(slot)]"
+                type="checkbox"
+                class="mt-1 h-4 w-4 rounded border-border"
+              />
+              <div class="min-w-0">
+                <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {{ formatDateShort(slot.date) }} / {{ formatMealPeriodLabel(slot.mealType) }}
+                </p>
+                <p class="mt-1 truncate text-sm font-bold text-foreground">{{ getRecipeTitle(slot.recipeId) }}</p>
+                <p class="mt-1 text-xs leading-relaxed text-muted-foreground">{{ slot.reason }}</p>
+                <span class="mt-2 inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
+                  {{ slot.confidence }} confidence
+                </span>
+              </div>
+            </label>
+          </div>
+
+          <div v-if="planner.aiDraft.shoppingHints.length" class="flex flex-wrap gap-2">
+            <span
+              v-for="hint in planner.aiDraft.shoppingHints"
+              :key="`${hint.ingredient}-${hint.reason}`"
+              class="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground"
+            >
+              {{ hint.ingredient }}: {{ hint.reason }}
+            </span>
+          </div>
+        </div>
+        <div v-else class="rounded-xl border border-amber-500/20 bg-amber-500/8 p-3.5 text-sm text-foreground">
+          {{ planner.aiDraftError }}
+        </div>
+      </div>
+    </div>
+
     <div class="flex gap-6">
       <div class="flex-1 min-w-0">
         <div class="hidden lg:block">
@@ -316,6 +567,18 @@ function sortRecipesByCreatedAt(items: Recipe[]) {
                     {{ formatDateShort(date) }}
                   </p>
                   <span v-if="isToday(date)" class="inline-block text-[9px] bg-primary text-primary-foreground px-2 py-0.5 rounded-full mt-1 font-bold">Today</span>
+                  <button
+                    type="button"
+                    class="mt-2 inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold transition-colors"
+                    :class="copySourceDate === date
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : copySourceDate
+                        ? 'border-primary/30 bg-primary/5 text-primary hover:bg-primary/10'
+                        : 'border-border/60 text-muted-foreground hover:border-primary/30 hover:text-primary'"
+                    @click="handleCopyDayClick(date)"
+                  >
+                    {{ copySourceDate ? (copySourceDate === date ? 'Source' : 'Paste day') : 'Copy day' }}
+                  </button>
                 </div>
               </div>
 
@@ -392,7 +655,21 @@ function sortRecipesByCreatedAt(items: Recipe[]) {
                     </p>
                     <p class="text-xs text-muted-foreground">{{ formatDateShort(date) }}</p>
                   </div>
-                  <span v-if="isToday(date)" class="text-xs bg-primary text-primary-foreground px-2.5 py-1 rounded-full font-bold">Today</span>
+                  <div class="flex flex-col items-end gap-2">
+                    <span v-if="isToday(date)" class="text-xs bg-primary text-primary-foreground px-2.5 py-1 rounded-full font-bold">Today</span>
+                    <button
+                      type="button"
+                      class="rounded-full border px-2.5 py-1 text-[10px] font-bold transition-colors"
+                      :class="copySourceDate === date
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : copySourceDate
+                          ? 'border-primary/30 bg-primary/5 text-primary'
+                          : 'border-border/60 text-muted-foreground'"
+                      @click="handleCopyDayClick(date)"
+                    >
+                      {{ copySourceDate ? (copySourceDate === date ? 'Source' : 'Paste') : 'Copy' }}
+                    </button>
+                  </div>
                 </div>
 
                 <div class="space-y-2">

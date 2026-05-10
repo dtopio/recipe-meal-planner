@@ -1,6 +1,8 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { createId, normalizeMealPeriodName, startOfWeek, toDateKey } from '../utils.js'
+import { generatePlannerDraft } from '../ai.js'
+import { config } from '../config.js'
 import {
   sendOk,
   sendError,
@@ -39,6 +41,10 @@ const plannerSlotUpdateSchema = z.object({
 
 const plannerWeekActionSchema = z.object({
   weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+})
+
+const plannerAiDraftSchema = plannerWeekActionSchema.extend({
+  mode: z.enum(['balanced', 'pantry-first', 'quick-simple']).default('balanced'),
 })
 
 const nutritionQuerySchema = z.object({
@@ -93,6 +99,107 @@ router.get('/nutrition', requireAuth, requireHousehold, asyncHandler(async (req,
   sendOk(res, summary)
 }))
 
+router.post('/ai-draft', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
+  const dto = plannerAiDraftSchema.parse(req.body || {})
+
+  if (!config.openrouterApiKey) {
+    return sendError(res, 503, 'OpenRouter AI support is not configured', 'INTEGRATION_NOT_CONFIGURED')
+  }
+
+  const weekStart = dto.weekStart || toDateKey(startOfWeek())
+  const preferences = await getHouseholdPreferences(req.householdId)
+  const slots = await getMealSlotsForWeek(req.householdId, weekStart)
+  const weekDates = getWeekDates(weekStart)
+  const emptySlots = weekDates
+    .flatMap(date => preferences.mealPeriods.map(mealType => ({ date, mealType })))
+    .filter(candidate => !slots.some(slot => slot.date === candidate.date && slot.mealType === candidate.mealType))
+    .slice(0, 42)
+
+  if (emptySlots.length === 0) {
+    return sendOk(res, {
+      mode: dto.mode,
+      weekStart,
+      summary: 'There are no empty planner slots for this week.',
+      slots: [],
+      shoppingHints: [],
+      warnings: ['All enabled meal periods already have meals.'],
+      model: 'none',
+      generatedAt: new Date().toISOString(),
+    })
+  }
+
+  const recipes = await db.getRecipesByHousehold(req.householdId)
+  if (recipes.length === 0) {
+    return sendError(res, 400, 'Add recipes before generating an AI planner draft', 'NO_RECIPES')
+  }
+
+  const pantryItems = await db.getPantryItems(req.householdId)
+  const input = {
+    mode: dto.mode,
+    weekStart,
+    emptySlots,
+    dietaryPreferences: preferences.dietaryPreferences,
+    mealPeriods: preferences.mealPeriods,
+    healthTargets: req.auth.user.healthTargets,
+    recipes: recipes.slice(0, 120).map(recipe => ({
+      id: recipe.id,
+      title: recipe.title,
+      description: recipe.description,
+      prepTime: recipe.prepTime,
+      cookTime: recipe.cookTime,
+      servings: recipe.servings,
+      tags: recipe.tags,
+      nutrition: recipe.nutrition,
+      ingredients: recipe.ingredients.map(ingredient => ({
+        quantity: ingredient.quantity,
+        unit: ingredient.unit,
+        name: ingredient.name,
+      })),
+    })),
+    pantryItems: pantryItems.slice(0, 160).map(item => ({
+      name: item.name,
+      quantity: item.quantity,
+      unit: item.unit,
+      category: item.category,
+      lowStockThreshold: item.lowStockThreshold,
+      expiresAt: item.expiresAt,
+    })),
+  }
+
+  const draft = await generatePlannerDraft(input)
+  const recipeIds = new Set(recipes.map(recipe => recipe.id))
+  const emptySlotKeys = new Set(emptySlots.map(slot => `${slot.date}::${slot.mealType}`))
+  const usedSlotKeys = new Set()
+  const validSlots = []
+
+  for (const slot of draft.slots) {
+    const key = `${slot.date}::${normalizeMealPeriodName(slot.mealType)}`
+    if (!recipeIds.has(slot.recipeId) || !emptySlotKeys.has(key) || usedSlotKeys.has(key)) {
+      continue
+    }
+
+    usedSlotKeys.add(key)
+    validSlots.push({
+      ...slot,
+      mealType: normalizeMealPeriodName(slot.mealType),
+    })
+  }
+
+  sendOk(res, {
+    mode: dto.mode,
+    weekStart,
+    summary: draft.summary,
+    slots: validSlots,
+    shoppingHints: draft.shoppingHints,
+    warnings: [
+      ...draft.warnings,
+      ...(validSlots.length < draft.slots.length ? ['Some AI suggestions were removed because they did not match available recipes or empty slots.'] : []),
+    ],
+    model: draft.model,
+    generatedAt: draft.generatedAt,
+  }, 'AI planner draft generated')
+}))
+
 router.post('/copy-last-week', requireAuth, requireHousehold, asyncHandler(async (req, res) => {
   const dto = plannerWeekActionSchema.parse(req.body || {})
   const weekStart = dto.weekStart || toDateKey(startOfWeek())
@@ -104,6 +211,10 @@ function addDaysToDateKey(dateKey, days) {
   const date = new Date(`${dateKey}T00:00:00`)
   date.setDate(date.getDate() + days)
   return toDateKey(date)
+}
+
+function getWeekDates(weekStart) {
+  return Array.from({ length: 7 }, (_, index) => addDaysToDateKey(weekStart, index))
 }
 
 function getMonthRange(monthKey) {

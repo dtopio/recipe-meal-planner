@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRecipeStore } from '@/stores/recipes'
 import { useHouseholdStore } from '@/stores/household'
+import { usePantryStore } from '@/stores/pantry'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import RecipeCard from '@/components/app/RecipeCard.vue'
 import AppEmptyState from '@/components/app/AppEmptyState.vue'
@@ -11,37 +12,90 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Plus, Import, Search, Grid3x3, List, X } from 'lucide-vue-next'
 import { formatMinutes } from '@/utils/date'
-import { getPreferenceConflicts, isRecipeCompatible } from '@/utils/recipe'
+import {
+  getPreferenceConflicts,
+  hasLowStockIngredient,
+  hasRecipeNutrition,
+  isRecipeCompatible,
+  isRecipePantryReady,
+} from '@/utils/recipe'
 import type { Recipe } from '@/types'
+
+type RecipeSmartFilter = 'missing-nutrition' | 'has-nutrition' | 'pantry-ready' | 'low-stock' | 'dietary-conflict'
 
 const router = useRouter()
 const store = useRecipeStore()
 const household = useHouseholdStore()
+const pantry = usePantryStore()
 const viewMode = ref<'grid' | 'list'>('grid')
 const matchPreferencesOnly = ref(false)
+const activeSmartFilters = ref<RecipeSmartFilter[]>([])
+
+const smartFilterOptions: Array<{ value: RecipeSmartFilter; label: string }> = [
+  { value: 'missing-nutrition', label: 'Missing nutrition' },
+  { value: 'has-nutrition', label: 'Has nutrition' },
+  { value: 'pantry-ready', label: 'Pantry-ready' },
+  { value: 'low-stock', label: 'Low stock warning' },
+  { value: 'dietary-conflict', label: 'Dietary conflict' },
+]
 
 const activePreferences = computed(() => household.preferences?.dietaryPreferences || [])
 const visibleRecipes = computed(() => {
-  if (!matchPreferencesOnly.value || activePreferences.value.length === 0) {
-    return store.filteredRecipes
+  let result = store.filteredRecipes.filter(recipe => (
+    activeSmartFilters.value.every(filter => matchesSmartFilter(recipe, filter))
+  ))
+
+  if (matchPreferencesOnly.value && activePreferences.value.length > 0) {
+    result = result.filter(recipe => isRecipeCompatible(recipe, household.preferences))
   }
 
-  return store.filteredRecipes.filter(recipe => isRecipeCompatible(recipe, household.preferences))
+  return result
 })
 
 const hasActiveFilters = computed(() =>
-  Boolean(store.searchQuery || store.activeTag || matchPreferencesOnly.value)
+  Boolean(store.searchQuery || store.activeTag || matchPreferencesOnly.value || activeSmartFilters.value.length)
 )
 
 onMounted(async () => {
   await Promise.all([
     store.recipes.length === 0 ? store.loadRecipes() : Promise.resolve(),
+    pantry.items.length === 0 ? pantry.loadItems() : Promise.resolve(),
     localStorage.getItem('household_id') && !household.preferences ? household.loadHousehold() : Promise.resolve(),
   ])
 })
 
 function conflictsFor(recipe: Recipe) {
   return getPreferenceConflicts(recipe, household.preferences)
+}
+
+function matchesSmartFilter(recipe: Recipe, filter: RecipeSmartFilter) {
+  switch (filter) {
+    case 'missing-nutrition':
+      return !hasRecipeNutrition(recipe)
+    case 'has-nutrition':
+      return hasRecipeNutrition(recipe)
+    case 'pantry-ready':
+      return isRecipePantryReady(recipe, pantry.items)
+    case 'low-stock':
+      return hasLowStockIngredient(recipe, pantry.items)
+    case 'dietary-conflict':
+      return conflictsFor(recipe).length > 0
+    default:
+      return true
+  }
+}
+
+function toggleSmartFilter(filter: RecipeSmartFilter) {
+  activeSmartFilters.value = activeSmartFilters.value.includes(filter)
+    ? activeSmartFilters.value.filter(value => value !== filter)
+    : [...activeSmartFilters.value, filter]
+}
+
+function clearAllFilters() {
+  store.searchQuery = ''
+  store.activeTag = null
+  matchPreferencesOnly.value = false
+  activeSmartFilters.value = []
 }
 </script>
 
@@ -125,6 +179,21 @@ function conflictsFor(recipe: Recipe) {
     </button>
   </div>
 
+  <div class="flex flex-wrap gap-2 mb-5">
+    <button
+      v-for="option in smartFilterOptions"
+      :key="option.value"
+      type="button"
+      class="rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors"
+      :class="activeSmartFilters.includes(option.value)
+        ? 'border-primary bg-primary text-primary-foreground shadow-sm shadow-primary/10'
+        : 'border-border bg-card text-muted-foreground hover:border-primary/30 hover:text-primary'"
+      @click="toggleSmartFilter(option.value)"
+    >
+      {{ option.label }}
+    </button>
+  </div>
+
   <div v-if="activePreferences.length" class="flex flex-col gap-3 mb-5 sm:flex-row sm:items-center sm:justify-between">
     <div class="flex flex-wrap gap-2">
       <span class="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
@@ -160,9 +229,9 @@ function conflictsFor(recipe: Recipe) {
     v-else-if="visibleRecipes.length === 0 && hasActiveFilters"
     icon="🔍"
     title="No recipes found"
-    description="No recipes match the current search, tags, or dietary filters. Try adjusting your criteria."
+    description="No recipes match the current search, tags, pantry, nutrition, or dietary filters. Try adjusting your criteria."
     action-label="Clear all filters"
-    @action="store.searchQuery = ''; store.activeTag = null; matchPreferencesOnly = false"
+    @action="clearAllFilters"
   />
 
   <AppEmptyState
@@ -195,6 +264,14 @@ function conflictsFor(recipe: Recipe) {
           class="inline-flex rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-700"
         >
           Matches household preferences
+        </span>
+      </div>
+      <div class="flex flex-wrap gap-1.5 px-1">
+        <span v-if="isRecipePantryReady(recipe, pantry.items)" class="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+          Pantry-ready
+        </span>
+        <span v-if="hasLowStockIngredient(recipe, pantry.items)" class="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+          Low stock
         </span>
       </div>
     </div>
@@ -233,6 +310,14 @@ function conflictsFor(recipe: Recipe) {
             class="inline-flex rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-700"
           >
             Matches household preferences
+          </span>
+        </div>
+        <div class="mt-2 flex flex-wrap gap-1.5">
+          <span v-if="isRecipePantryReady(recipe, pantry.items)" class="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+            Pantry-ready
+          </span>
+          <span v-if="hasLowStockIngredient(recipe, pantry.items)" class="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+            Low stock
           </span>
         </div>
       </div>

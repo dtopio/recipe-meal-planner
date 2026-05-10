@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { CATEGORY_LABELS, CATEGORY_EMOJI, SHOPPING_CATEGORIES } from '@/types'
-import type { AddShoppingItemDTO, ShoppingPeriod } from '@/types'
+import type { AddShoppingItemDTO, ShoppingListItem, ShoppingPeriod } from '@/types'
 import { formatDateShort } from '@/utils/date'
 import {
   Plus,
@@ -23,6 +23,7 @@ import {
   Copy,
   Share2,
   Download,
+  Printer,
   WifiOff,
   ChevronDown,
   ChevronRight,
@@ -285,6 +286,91 @@ function handleDownloadCsv() {
   URL.revokeObjectURL(url)
   toast.success('Shopping list exported')
 }
+
+function handlePrintList() {
+  if (exportItems.value.length === 0) {
+    toast('No shopping items match the current filters')
+    return
+  }
+
+  const printWindow = window.open('', '_blank', 'width=760,height=900')
+  if (!printWindow) {
+    toast.error('Could not open print window')
+    return
+  }
+
+  printWindow.document.write(buildPrintHtml())
+  printWindow.document.close()
+  printWindow.focus()
+  printWindow.print()
+  printWindow.close()
+}
+
+function buildPrintHtml() {
+  const grouped = new Map<string, ShoppingListItem[]>()
+
+  for (const item of exportItems.value) {
+    const label = CATEGORY_LABELS[item.category]
+    grouped.set(label, [...(grouped.get(label) || []), item])
+  }
+
+  const sections = Array.from(grouped.entries()).map(([label, items]) => `
+    <section>
+      <h2>${escapeHtml(label)}</h2>
+      <ul>
+        ${items.map(item => `
+          <li class="${item.checked ? 'checked' : ''}">
+            <span class="box">${item.checked ? 'x' : ''}</span>
+            <span class="name">${escapeHtml(item.name)}</span>
+            <span class="qty">${escapeHtml(formatExportQuantity(item.quantity, item.unit))}</span>
+          </li>
+        `).join('')}
+      </ul>
+    </section>
+  `).join('')
+
+  return `<!doctype html>
+    <html>
+      <head>
+        <title>MealSync Shopping List</title>
+        <style>
+          * { box-sizing: border-box; }
+          body { font-family: Inter, Arial, sans-serif; color: #111827; margin: 32px; }
+          header { border-bottom: 2px solid #111827; margin-bottom: 24px; padding-bottom: 16px; }
+          h1 { font-size: 28px; line-height: 1.1; margin: 0; }
+          p { color: #4b5563; margin: 8px 0 0; }
+          section { break-inside: avoid; margin-bottom: 24px; }
+          h2 { font-size: 14px; letter-spacing: .08em; margin: 0 0 8px; text-transform: uppercase; }
+          ul { border-top: 1px solid #d1d5db; list-style: none; margin: 0; padding: 0; }
+          li { align-items: center; border-bottom: 1px solid #e5e7eb; display: grid; gap: 10px; grid-template-columns: 24px 1fr auto; min-height: 36px; padding: 8px 0; }
+          .box { border: 1px solid #6b7280; display: inline-flex; height: 18px; justify-content: center; line-height: 16px; width: 18px; }
+          .checked { color: #6b7280; text-decoration: line-through; }
+          .name { font-weight: 700; }
+          .qty { color: #4b5563; font-size: 13px; }
+        </style>
+      </head>
+      <body>
+        <header>
+          <h1>MealSync Shopping List</h1>
+          <p>${escapeHtml(getActivePeriodLabel())} / ${exportItems.value.length} item${exportItems.value.length === 1 ? '' : 's'}</p>
+        </header>
+        ${sections}
+      </body>
+    </html>`
+}
+
+function formatExportQuantity(quantity: number, unit: string) {
+  return `${quantity} ${unit}`.trim()
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
 </script>
 
 <template>
@@ -320,6 +406,9 @@ function handleDownloadCsv() {
         </Button>
         <Button variant="outline" class="press-scale shrink-0" :disabled="exportItems.length === 0" @click="handleDownloadCsv">
           <Download class="mr-1.5 h-4 w-4" /> Export CSV
+        </Button>
+        <Button variant="outline" class="press-scale shrink-0" :disabled="exportItems.length === 0" @click="handlePrintList">
+          <Printer class="mr-1.5 h-4 w-4" /> Print
         </Button>
         <Button @click="showAddForm = !showAddForm" class="shadow-md shadow-primary/10 press-scale shrink-0">
           <Plus class="mr-1.5 h-4 w-4" /> Add Item
