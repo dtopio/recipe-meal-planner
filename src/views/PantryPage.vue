@@ -12,13 +12,14 @@ import { CATEGORY_EMOJI, CATEGORY_LABELS, SHOPPING_CATEGORIES } from '@/types'
 import type { AddPantryItemDTO, PantryItem } from '@/types'
 import { ingredientMatchKey } from '@/utils/recipe'
 import { formatDateShort, getTodayDateKey } from '@/utils/date'
-import { Archive, Plus, Search, X, AlertTriangle, CalendarClock, ShoppingCart } from 'lucide-vue-next'
+import { Archive, Plus, Minus, Search, X, AlertTriangle, CalendarClock, ShoppingCart, LayoutGrid, List, Trash2 } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 
 const pantry = usePantryStore()
 const planner = usePlannerStore()
 const shopping = useShoppingStore()
 const showAddForm = ref(false)
+const viewMode = ref<'list' | 'compact'>(loadPantryViewMode())
 const form = ref<AddPantryItemDTO>({
   name: '',
   quantity: 1,
@@ -29,6 +30,7 @@ const form = ref<AddPantryItemDTO>({
 })
 
 const lowStockSummary = computed(() => pantry.lowStockItems.slice(0, 6))
+const hasActiveFilters = computed(() => Boolean(pantry.searchQuery || pantry.filterCategory))
 const expiringSoonItems = computed(() => {
   const today = getTodayDateKey()
 
@@ -239,6 +241,16 @@ function getDayDifference(from: string, to: string) {
 function formatQuantity(value: number) {
   return Number(value.toFixed(2)).toString()
 }
+
+function setViewMode(mode: 'list' | 'compact') {
+  viewMode.value = mode
+  localStorage.setItem('pantry_view_mode', mode)
+}
+
+function loadPantryViewMode(): 'list' | 'compact' {
+  const stored = localStorage.getItem('pantry_view_mode')
+  return stored === 'compact' ? 'compact' : 'list'
+}
 </script>
 
 <template>
@@ -354,23 +366,56 @@ function formatQuantity(value: number) {
       </div>
     </div>
 
-    <div class="flex gap-2.5">
-      <div class="relative flex-1">
-        <Search class="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input v-model="pantry.searchQuery" class="h-11 rounded-xl pl-10" placeholder="Search pantry..." />
-        <button v-if="pantry.searchQuery" class="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 hover:bg-muted" @click="pantry.searchQuery = ''">
-          <X class="h-3.5 w-3.5 text-muted-foreground" />
-        </button>
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div class="flex gap-2.5 lg:flex-1">
+        <div class="relative flex-1">
+          <Search class="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input v-model="pantry.searchQuery" class="h-11 rounded-xl pl-10" placeholder="Search pantry..." />
+          <button v-if="pantry.searchQuery" class="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 hover:bg-muted" @click="pantry.searchQuery = ''">
+            <X class="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+        </div>
+        <select
+          v-model="pantry.filterCategory"
+          class="hidden h-11 rounded-xl border border-border bg-card px-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring sm:block"
+        >
+          <option :value="null">All</option>
+          <option v-for="category in SHOPPING_CATEGORIES" :key="category" :value="category">
+            {{ CATEGORY_EMOJI[category] }} {{ CATEGORY_LABELS[category] }}
+          </option>
+        </select>
       </div>
-      <select
-        v-model="pantry.filterCategory"
-        class="hidden h-11 rounded-xl border border-border bg-card px-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring sm:block"
-      >
-        <option :value="null">All</option>
-        <option v-for="category in SHOPPING_CATEGORIES" :key="category" :value="category">
-          {{ CATEGORY_EMOJI[category] }} {{ CATEGORY_LABELS[category] }}
-        </option>
-      </select>
+
+      <div class="flex items-center gap-2">
+        <select
+          v-model="pantry.sortBy"
+          class="h-11 flex-1 rounded-xl border border-border bg-card px-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring sm:flex-initial"
+        >
+          <option value="name">Sort by name</option>
+          <option value="low-stock">Low stock first</option>
+          <option value="expiry">Expiry first</option>
+        </select>
+        <div class="inline-flex rounded-xl border border-border bg-card p-1">
+          <button
+            type="button"
+            class="rounded-lg p-2 transition-colors"
+            :class="viewMode === 'list' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'"
+            aria-label="List view"
+            @click="setViewMode('list')"
+          >
+            <List class="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            class="rounded-lg p-2 transition-colors"
+            :class="viewMode === 'compact' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'"
+            aria-label="Compact view"
+            @click="setViewMode('compact')"
+          >
+            <LayoutGrid class="h-4 w-4" />
+          </button>
+        </div>
+      </div>
     </div>
 
     <Transition
@@ -426,6 +471,72 @@ function formatQuantity(value: number) {
       action-label="Add Your First Item"
       @action="showAddForm = true"
     />
+
+    <AppEmptyState
+      v-else-if="pantry.filteredItems.length === 0"
+      compact
+      icon="BOX"
+      title="No pantry items match"
+      description="Clear the search or category filter to see everything again."
+      :action-label="hasActiveFilters ? 'Clear Filters' : undefined"
+      @action="pantry.searchQuery = ''; pantry.filterCategory = null"
+    />
+
+    <div v-else-if="viewMode === 'compact'" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div
+        v-for="item in pantry.filteredItems"
+        :key="item.id"
+        class="surface-card p-4"
+      >
+        <div class="mb-3 flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="mb-1.5 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+              <span>{{ CATEGORY_EMOJI[item.category] }}</span>
+              <span>{{ CATEGORY_LABELS[item.category] }}</span>
+            </div>
+            <p class="truncate text-base font-bold text-foreground">{{ item.name }}</p>
+          </div>
+          <span
+            v-if="item.quantity <= item.lowStockThreshold"
+            class="shrink-0 rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-700"
+          >
+            Low
+          </span>
+        </div>
+
+        <div class="space-y-1.5 text-sm text-muted-foreground">
+          <p>
+            <span class="font-semibold text-foreground">{{ formatQuantity(item.quantity) }}</span>
+            {{ item.unit || 'units' }}
+          </p>
+          <p>Threshold {{ formatQuantity(item.lowStockThreshold) }}</p>
+          <p v-if="item.expiresAt" :class="item.expiresAt <= getTodayDateKey() ? 'font-semibold text-rose-700' : ''">
+            Expires {{ formatDateShort(item.expiresAt) }}
+          </p>
+        </div>
+
+        <div class="mt-4 flex items-center justify-between gap-2">
+          <div class="flex gap-1.5">
+            <Button variant="outline" size="icon" class="h-9 w-9" @click="adjustQuantity(item.id, -1)">
+              <span class="sr-only">Decrease quantity</span>
+              <Minus class="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="icon" class="h-9 w-9" @click="adjustQuantity(item.id, 1)">
+              <span class="sr-only">Increase quantity</span>
+              <Plus class="h-4 w-4" />
+            </Button>
+          </div>
+          <div class="flex gap-1.5">
+            <Button variant="outline" size="icon" class="h-9 w-9" @click="addPantryItemToShopping(item)">
+              <ShoppingCart class="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" class="h-9 w-9 text-muted-foreground hover:text-destructive" @click="removeItem(item.id)">
+              <Trash2 class="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div v-else class="space-y-5">
       <div v-for="[category, categoryItems] in pantry.itemsByCategory" :key="category">

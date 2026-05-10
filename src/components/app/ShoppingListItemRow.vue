@@ -6,6 +6,7 @@ import { formatDateShort } from '@/utils/date'
 
 defineProps<{
   item: ShoppingListItem
+  pantryCoverageLabel?: string
 }>()
 
 defineEmits<{
@@ -41,6 +42,10 @@ defineEmits<{
 
         <span v-if="item.sourceRecipeName" class="max-w-full truncate rounded-full bg-primary/8 px-2 py-0.5 text-[11px] font-semibold text-primary/80">
           For: {{ item.sourceRecipeName }}
+        </span>
+
+        <span v-if="pantryCoverageLabel" class="max-w-full truncate rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+          {{ pantryCoverageLabel }}
         </span>
 
         <span

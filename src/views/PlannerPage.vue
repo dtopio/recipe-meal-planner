@@ -5,15 +5,17 @@ import { usePlannerStore } from '@/stores/planner'
 import { useRecipeStore } from '@/stores/recipes'
 import { useShoppingStore } from '@/stores/shopping'
 import { useHouseholdStore } from '@/stores/household'
+import { useUiStore } from '@/stores/ui'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import MealSlotCard from '@/components/app/MealSlotCard.vue'
 import AppSkeleton from '@/components/app/AppSkeleton.vue'
+import AppErrorState from '@/components/app/AppErrorState.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { formatDateShort, getDayName, getDayNameShort, isToday } from '@/utils/date'
+import { formatDateShort, getDayName, getDayNameShort, getStartOfWeekDateKey, isToday } from '@/utils/date'
 import { formatMealPeriodLabel, getMealPeriodDisplay, getMealPeriods } from '@/utils/meal-periods'
 import type { AiPlannerMode, AiPlannerSlotSuggestion, MealSlot, MealType, Recipe } from '@/types'
-import { ChevronLeft, ChevronRight, Search, X, BookOpen, ShoppingCart, Copy, RefreshCw, Sparkles, Loader2 } from 'lucide-vue-next'
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Search, X, BookOpen, ShoppingCart, Copy, RefreshCw, Sparkles, Loader2, CalendarDays, Trash2 } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 
 const router = useRouter()
@@ -21,6 +23,7 @@ const planner = usePlannerStore()
 const recipes = useRecipeStore()
 const shopping = useShoppingStore()
 const household = useHouseholdStore()
+const ui = useUiStore()
 
 const showRecipePanel = ref(false)
 const recipeSearch = ref('')
@@ -28,6 +31,7 @@ const assignTarget = ref<{ date: string; mealType: MealType } | null>(null)
 const draggedRecipe = ref<Recipe | null>(null)
 const copySourceSlot = ref<MealSlot | null>(null)
 const copySourceDate = ref<string | null>(null)
+const collapsedDays = ref<Record<string, boolean>>(loadCollapsedPlannerDays())
 const aiMode = ref<AiPlannerMode>('balanced')
 const selectedAiSlotKeys = ref<Record<string, boolean>>({})
 const regeneratingAiDate = ref<string | null>(null)
@@ -64,6 +68,7 @@ const selectedAiSuggestions = computed(() => (
   planner.aiDraft?.slots.filter(slot => selectedAiSlotKeys.value[getAiSlotKey(slot)]) || []
 ))
 const defaultPlannerServings = computed(() => Math.min(Math.max(household.memberCount || 1, 1), 50))
+const currentWeekIsThisWeek = computed(() => planner.currentWeekStart === getStartOfWeekDateKey())
 
 onMounted(async () => {
   await Promise.all([
@@ -151,6 +156,30 @@ function getDaySlots(date: string) {
   return mealTypes.value.flatMap(mealType => getMealSlots(date, mealType))
 }
 
+function getDayMealCount(date: string) {
+  return getDaySlots(date).filter(slot => slot.recipeId).length
+}
+
+function isDayCollapsed(date: string) {
+  return Boolean(collapsedDays.value[date])
+}
+
+function toggleDayCollapsed(date: string) {
+  collapsedDays.value = {
+    ...collapsedDays.value,
+    [date]: !collapsedDays.value[date],
+  }
+  saveCollapsedPlannerDays(collapsedDays.value)
+}
+
+async function handleTodayClick() {
+  try {
+    await planner.loadWeekPlan(getStartOfWeekDateKey())
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to load current week')
+  }
+}
+
 async function handleCopyDayClick(date: string) {
   if (copySourceDate.value) {
     if (copySourceDate.value === date) {
@@ -236,6 +265,56 @@ async function handleRemoveMeal(slotId: string) {
     await planner.removeMeal(slotId)
   } catch (error) {
     toast.error(error instanceof Error ? error.message : 'Failed to remove meal')
+  }
+}
+
+function handleClearDay(date: string) {
+  const slots = getDaySlots(date).filter(slot => slot.recipeId)
+
+  if (slots.length === 0) {
+    toast('No meals planned for this day')
+    return
+  }
+
+  ui.showConfirm({
+    title: `Clear ${getDayNameShort(date)}?`,
+    description: `This removes ${slots.length} planned meal${slots.length === 1 ? '' : 's'} from ${formatDateShort(date)}.`,
+    confirmLabel: 'Clear day',
+    variant: 'destructive',
+    onConfirm: async () => {
+      await clearMealSlots(slots, 'Day cleared')
+    },
+  })
+}
+
+function handleClearWeek() {
+  const slots = planner.slots.filter(slot => planner.weekDates.includes(slot.date) && slot.recipeId)
+
+  if (slots.length === 0) {
+    toast('No meals planned for this week')
+    return
+  }
+
+  ui.showConfirm({
+    title: 'Clear this week?',
+    description: `This removes ${slots.length} planned meal${slots.length === 1 ? '' : 's'} from the current week.`,
+    confirmLabel: 'Clear week',
+    variant: 'destructive',
+    onConfirm: async () => {
+      await clearMealSlots(slots, 'Week cleared')
+    },
+  })
+}
+
+async function clearMealSlots(slots: MealSlot[], successMessage: string) {
+  try {
+    for (const slot of slots) {
+      await planner.removeMeal(slot.id)
+    }
+
+    toast.success(successMessage)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to clear meals')
   }
 }
 
@@ -397,6 +476,18 @@ function setAllAiSuggestions(selected: boolean) {
 function sortRecipesByCreatedAt(items: Recipe[]) {
   return [...items].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 }
+
+function loadCollapsedPlannerDays() {
+  try {
+    return JSON.parse(localStorage.getItem('planner_collapsed_days') || '{}') as Record<string, boolean>
+  } catch {
+    return {}
+  }
+}
+
+function saveCollapsedPlannerDays(value: Record<string, boolean>) {
+  localStorage.setItem('planner_collapsed_days', JSON.stringify(value))
+}
 </script>
 
 <template>
@@ -412,6 +503,9 @@ function sortRecipesByCreatedAt(items: Recipe[]) {
         <Button variant="outline" size="sm" @click="planner.navigateWeek('next')" class="press-scale">
           <ChevronRight class="w-4 h-4" />
         </Button>
+        <Button variant="outline" size="sm" :disabled="currentWeekIsThisWeek" @click="handleTodayClick" class="press-scale">
+          <CalendarDays class="w-4 h-4 mr-1.5" /> Today
+        </Button>
         <Button variant="outline" size="sm" @click="handleCopyLastWeek" class="press-scale">
           <Copy class="w-4 h-4 mr-1.5" /> Copy Last Week
         </Button>
@@ -421,6 +515,15 @@ function sortRecipesByCreatedAt(items: Recipe[]) {
         <Button variant="outline" size="sm" :disabled="planner.aiDraftLoading || !hasEmptySlots" @click="handleGenerateAiPlan" class="press-scale">
           <Loader2 v-if="planner.aiDraftLoading" class="w-4 h-4 mr-1.5 animate-spin" />
           <Sparkles v-else class="w-4 h-4 mr-1.5" /> AI Fill
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          class="border-destructive/20 text-destructive hover:bg-destructive/5 press-scale"
+          :disabled="planner.assignedMealCount === 0"
+          @click="handleClearWeek"
+        >
+          <Trash2 class="w-4 h-4 mr-1.5" /> Clear Week
         </Button>
         <Button size="sm" class="hidden lg:inline-flex shadow-sm" @click="showRecipePanel = !showRecipePanel">
           <BookOpen class="w-4 h-4 mr-1.5" /> Recipe Library
@@ -441,6 +544,14 @@ function sortRecipesByCreatedAt(items: Recipe[]) {
       />
     </div>
   </div>
+
+  <AppErrorState
+    v-else-if="planner.error && planner.slots.length === 0"
+    title="Meal planner could not load"
+    :message="planner.error"
+    retry-label="Try again"
+    @retry="planner.loadWeekPlan()"
+  />
 
   <template v-else>
     <div
@@ -601,18 +712,28 @@ function sortRecipesByCreatedAt(items: Recipe[]) {
                     {{ formatDateShort(date) }}
                   </p>
                   <span v-if="isToday(date)" class="inline-block text-[9px] bg-primary text-primary-foreground px-2 py-0.5 rounded-full mt-1 font-bold">Today</span>
-                  <button
-                    type="button"
-                    class="mt-2 inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold transition-colors"
-                    :class="copySourceDate === date
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : copySourceDate
-                        ? 'border-primary/30 bg-primary/5 text-primary hover:bg-primary/10'
-                        : 'border-border/60 text-muted-foreground hover:border-primary/30 hover:text-primary'"
-                    @click="handleCopyDayClick(date)"
-                  >
-                    {{ copySourceDate ? (copySourceDate === date ? 'Source' : 'Paste day') : 'Copy day' }}
-                  </button>
+                  <div class="mt-2 flex items-center justify-center gap-1.5">
+                    <button
+                      type="button"
+                      class="inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold transition-colors"
+                      :class="copySourceDate === date
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : copySourceDate
+                          ? 'border-primary/30 bg-primary/5 text-primary hover:bg-primary/10'
+                          : 'border-border/60 text-muted-foreground hover:border-primary/30 hover:text-primary'"
+                      @click="handleCopyDayClick(date)"
+                    >
+                      {{ copySourceDate ? (copySourceDate === date ? 'Source' : 'Paste day') : 'Copy day' }}
+                    </button>
+                    <button
+                      type="button"
+                      class="inline-flex items-center rounded-full border border-destructive/20 px-2.5 py-1 text-[10px] font-bold text-destructive transition-colors hover:bg-destructive/5 disabled:cursor-not-allowed disabled:opacity-40"
+                      :disabled="getDayMealCount(date) === 0"
+                      @click="handleClearDay(date)"
+                    >
+                      Clear
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -662,7 +783,7 @@ function sortRecipesByCreatedAt(items: Recipe[]) {
                     class="flex items-center justify-center rounded-lg border border-dashed border-border/40 px-2 py-2 text-[11px] font-semibold text-muted-foreground/40 transition-all hover:border-primary/30 hover:bg-primary/[0.04] hover:text-primary mt-auto"
                     @click="openAssignPanel(date, mealType)"
                   >
-                    {{ copySourceSlot ? '+ Copy here' : '+ Add' }}
+                    {{ copySourceSlot ? '+ Copy here' : `+ Add ${formatMealPeriodLabel(mealType).toLowerCase()}` }}
                   </button>
                 </div>
               </div>
@@ -691,22 +812,48 @@ function sortRecipesByCreatedAt(items: Recipe[]) {
                   </div>
                   <div class="flex flex-col items-end gap-2">
                     <span v-if="isToday(date)" class="text-xs bg-primary text-primary-foreground px-2.5 py-1 rounded-full font-bold">Today</span>
-                    <button
-                      type="button"
-                      class="rounded-full border px-2.5 py-1 text-[10px] font-bold transition-colors"
-                      :class="copySourceDate === date
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : copySourceDate
-                          ? 'border-primary/30 bg-primary/5 text-primary'
-                          : 'border-border/60 text-muted-foreground'"
-                      @click="handleCopyDayClick(date)"
-                    >
-                      {{ copySourceDate ? (copySourceDate === date ? 'Source' : 'Paste') : 'Copy' }}
-                    </button>
+                    <div class="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        class="rounded-full border px-2.5 py-1 text-[10px] font-bold transition-colors"
+                        :class="copySourceDate === date
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : copySourceDate
+                            ? 'border-primary/30 bg-primary/5 text-primary'
+                            : 'border-border/60 text-muted-foreground'"
+                        @click="handleCopyDayClick(date)"
+                      >
+                        {{ copySourceDate ? (copySourceDate === date ? 'Source' : 'Paste') : 'Copy' }}
+                      </button>
+                      <button
+                        type="button"
+                        class="rounded-full border border-destructive/20 px-2.5 py-1 text-[10px] font-bold text-destructive transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                        :disabled="getDayMealCount(date) === 0"
+                        @click="handleClearDay(date)"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        class="rounded-full border border-border/60 p-1.5 text-muted-foreground transition-colors"
+                        :aria-label="isDayCollapsed(date) ? 'Expand day' : 'Collapse day'"
+                        @click="toggleDayCollapsed(date)"
+                      >
+                        <ChevronDown v-if="isDayCollapsed(date)" class="h-3.5 w-3.5" />
+                        <ChevronUp v-else class="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                <div class="space-y-2">
+                <div v-if="isDayCollapsed(date)" class="rounded-xl border border-dashed border-border/60 bg-muted/20 px-3 py-4 text-center">
+                  <p class="text-sm font-semibold text-foreground">
+                    {{ getDayMealCount(date) }} meal{{ getDayMealCount(date) === 1 ? '' : 's' }} planned
+                  </p>
+                  <p class="mt-1 text-xs text-muted-foreground">Tap the arrow to expand this day.</p>
+                </div>
+
+                <div v-else class="space-y-2">
                   <div
                     v-for="mealType in mealTypes"
                     :key="mealType"
