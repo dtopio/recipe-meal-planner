@@ -7,15 +7,17 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { usePantryStore } from '@/stores/pantry'
 import { usePlannerStore } from '@/stores/planner'
+import { useShoppingStore } from '@/stores/shopping'
 import { CATEGORY_EMOJI, CATEGORY_LABELS, SHOPPING_CATEGORIES } from '@/types'
-import type { AddPantryItemDTO } from '@/types'
+import type { AddPantryItemDTO, PantryItem } from '@/types'
 import { ingredientMatchKey } from '@/utils/recipe'
 import { formatDateShort, getTodayDateKey } from '@/utils/date'
-import { Archive, Plus, Search, X, AlertTriangle } from 'lucide-vue-next'
+import { Archive, Plus, Search, X, AlertTriangle, CalendarClock, ShoppingCart } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 
 const pantry = usePantryStore()
 const planner = usePlannerStore()
+const shopping = useShoppingStore()
 const showAddForm = ref(false)
 const form = ref<AddPantryItemDTO>({
   name: '',
@@ -26,7 +28,20 @@ const form = ref<AddPantryItemDTO>({
   expiresAt: '',
 })
 
-const lowStockSummary = computed(() => pantry.lowStockItems.slice(0, 3))
+const lowStockSummary = computed(() => pantry.lowStockItems.slice(0, 6))
+const expiringSoonItems = computed(() => {
+  const today = getTodayDateKey()
+
+  return pantry.items
+    .filter(item => item.expiresAt)
+    .map(item => ({
+      item,
+      daysUntilExpiry: getDayDifference(today, item.expiresAt!),
+    }))
+    .filter(entry => entry.daysUntilExpiry <= 7)
+    .sort((left, right) => left.daysUntilExpiry - right.daysUntilExpiry)
+})
+const expiringSoonPreview = computed(() => expiringSoonItems.value.slice(0, 6))
 const plannedMealAlerts = computed(() => {
   const pantryByKey = new Map<string, {
     name: string
@@ -186,6 +201,29 @@ async function removeItem(itemId: string) {
   }
 }
 
+async function addPantryItemToShopping(item: PantryItem) {
+  const suggestedQuantity = Math.max(1, Number((item.lowStockThreshold - item.quantity + 1).toFixed(2)))
+
+  try {
+    await shopping.addItem({
+      name: item.name,
+      quantity: suggestedQuantity,
+      unit: item.unit,
+      category: item.category,
+    })
+    toast.success(`${item.name} added to shopping list`)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to add item to shopping list')
+  }
+}
+
+function getExpiryLabel(daysUntilExpiry: number) {
+  if (daysUntilExpiry < 0) return `${Math.abs(daysUntilExpiry)}d expired`
+  if (daysUntilExpiry === 0) return 'Expires today'
+  if (daysUntilExpiry === 1) return 'Expires tomorrow'
+  return `${daysUntilExpiry}d left`
+}
+
 function pickEarlierDate(left?: string, right?: string) {
   if (!left) return right
   if (!right) return left
@@ -231,8 +269,8 @@ function formatQuantity(value: number) {
         <p class="mt-2 text-3xl font-extrabold tracking-tight text-amber-600">{{ pantry.lowStockItems.length }}</p>
       </div>
       <div class="surface-card p-5">
-        <p class="text-sm font-semibold text-muted-foreground">Planned Meal Risks</p>
-        <p class="mt-2 text-3xl font-extrabold tracking-tight text-rose-600">{{ plannedMealAlerts.length }}</p>
+        <p class="text-sm font-semibold text-muted-foreground">Expires Soon</p>
+        <p class="mt-2 text-3xl font-extrabold tracking-tight text-rose-600">{{ expiringSoonItems.length }}</p>
       </div>
     </div>
 
@@ -241,14 +279,48 @@ function formatQuantity(value: number) {
         <Archive class="h-4 w-4 text-amber-600" />
         <h2 class="font-bold tracking-tight text-foreground">Restock Soon</h2>
       </div>
-      <div class="flex flex-wrap gap-2">
-        <span
+      <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div
           v-for="item in lowStockSummary"
           :key="item.id"
-          class="rounded-full bg-amber-500/10 px-3 py-1 text-sm font-medium text-amber-700"
+          class="flex items-center justify-between gap-3 rounded-xl bg-amber-500/8 px-3.5 py-3"
         >
-          {{ item.name }} - {{ item.quantity }} {{ item.unit || 'units' }}
-        </span>
+          <div class="min-w-0">
+            <p class="truncate text-sm font-semibold text-foreground">{{ item.name }}</p>
+            <p class="text-xs text-muted-foreground">
+              {{ formatQuantity(item.quantity) }} {{ item.unit || 'units' }} left / threshold {{ formatQuantity(item.lowStockThreshold) }}
+            </p>
+          </div>
+          <Button variant="outline" size="sm" class="shrink-0" @click="addPantryItemToShopping(item)">
+            <ShoppingCart class="mr-1.5 h-3.5 w-3.5" /> Add
+          </Button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="expiringSoonPreview.length" class="surface-card p-5">
+      <div class="mb-3 flex items-center gap-2">
+        <CalendarClock class="h-4 w-4 text-rose-600" />
+        <h2 class="font-bold tracking-tight text-foreground">Expires Soon</h2>
+      </div>
+      <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div
+          v-for="entry in expiringSoonPreview"
+          :key="entry.item.id"
+          class="rounded-xl border border-rose-500/15 bg-rose-500/8 px-3.5 py-3"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="truncate text-sm font-semibold text-foreground">{{ entry.item.name }}</p>
+              <p class="mt-1 text-xs text-muted-foreground">
+                {{ formatQuantity(entry.item.quantity) }} {{ entry.item.unit || 'units' }} / {{ formatDateShort(entry.item.expiresAt!) }}
+              </p>
+            </div>
+            <span class="shrink-0 rounded-full bg-background/70 px-2.5 py-1 text-[11px] font-semibold text-rose-700">
+              {{ getExpiryLabel(entry.daysUntilExpiry) }}
+            </span>
+          </div>
+        </div>
       </div>
     </div>
 

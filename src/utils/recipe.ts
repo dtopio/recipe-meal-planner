@@ -113,6 +113,33 @@ export function getPantryCoverage(pantryItems: PantryItem[], ingredientName: str
   }
 }
 
+export function hasRecipeNutrition(recipe: Recipe): boolean {
+  const nutrition = recipe.nutrition
+  if (!nutrition) return false
+
+  return ['calories', 'protein', 'carbs', 'fat']
+    .some(key => Number(nutrition[key as keyof NutritionTotals] || 0) > 0)
+}
+
+export function isRecipePantryReady(recipe: Recipe, pantryItems: PantryItem[]): boolean {
+  if (!recipe.ingredients?.length) return false
+
+  return recipe.ingredients.every(ingredient => (
+    getPantryCoverage(pantryItems, ingredient.name, ingredient.unit, ingredient.quantity).hasEnough
+  ))
+}
+
+export function hasLowStockIngredient(recipe: Recipe, pantryItems: PantryItem[]): boolean {
+  if (!recipe.ingredients?.length || !pantryItems.length) return false
+
+  return recipe.ingredients.some(ingredient => (
+    pantryItems.some(item => (
+      ingredientMatchKey(item.name, item.unit) === ingredientMatchKey(ingredient.name, ingredient.unit)
+      && Number(item.quantity) <= Number(item.lowStockThreshold)
+    ))
+  ))
+}
+
 export function getRecipeHealthFit(nutrition: NutritionTotals, healthTargets: HealthTargets) {
   const calorieShare = getGoalShare(nutrition.calories, healthTargets.calories)
   const proteinShare = getGoalShare(nutrition.protein, healthTargets.protein)

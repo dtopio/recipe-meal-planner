@@ -26,6 +26,22 @@ const shoppingSummarySchema = z.object({
   focus: z.array(z.string()).max(3),
 })
 
+const plannerDraftSchema = z.object({
+  summary: z.string().min(1),
+  slots: z.array(z.object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    mealType: z.string().min(1),
+    recipeId: z.string().min(1),
+    confidence: z.enum(['high', 'medium', 'low']),
+    reason: z.string().min(1),
+  })).max(42),
+  shoppingHints: z.array(z.object({
+    ingredient: z.string().min(1),
+    reason: z.string().min(1),
+  })).max(8),
+  warnings: z.array(z.string()).max(8),
+})
+
 function extractJson(value) {
   const trimmed = String(value || '').trim()
 
@@ -148,6 +164,57 @@ export async function generateShoppingSummary(input) {
       }),
     },
   ], shoppingSummarySchema)
+}
+
+export async function generatePlannerDraft(input) {
+  return requestOpenRouterJson([
+    {
+      role: 'system',
+      content: [
+        'You are a careful meal-planning assistant inside a household meal planner app.',
+        'Return JSON only.',
+        'Never invent recipes, recipe IDs, dates, or meal slots.',
+        'Suggest a draft only; the user will choose what to apply.',
+      ].join(' '),
+    },
+    {
+      role: 'user',
+      content: JSON.stringify({
+        task: 'Create a draft meal plan for empty planner slots using only the provided recipe IDs.',
+        requiredShape: {
+          summary: 'short explanation of the plan',
+          slots: [
+            {
+              date: 'YYYY-MM-DD from emptySlots only',
+              mealType: 'meal period from emptySlots only',
+              recipeId: 'existing recipe id only',
+              confidence: 'high | medium | low',
+              reason: 'short reason',
+            },
+          ],
+          shoppingHints: [
+            {
+              ingredient: 'ingredient name',
+              reason: 'why it may be needed',
+            },
+          ],
+          warnings: ['short warning if data is missing or tradeoffs exist'],
+        },
+        rules: [
+          'Every recipeId must exist in recipes.',
+          'Every date and mealType pair must exist in emptySlots.',
+          'Do not assign more than one recipe to the same empty slot.',
+          'Prefer variety across the week.',
+          'Respect dietaryPreferences and avoid conflicts whenever possible.',
+          'For use-pantry-first mode, prioritize pantry-ready recipes.',
+          'For quick-simple mode, prioritize shorter prep+cook time and repeated ingredients.',
+          'If nutrition exists, balance calories and protein across the requested slots.',
+          'If not enough data exists, return useful partial suggestions and explain gaps in warnings.',
+        ],
+        planner: input,
+      }),
+    },
+  ], plannerDraftSchema)
 }
 
 export async function generateRecipeAskResponse(recipe, question, nutrition, healthTargets = null) {
