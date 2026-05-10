@@ -676,7 +676,7 @@ function escapeHtml(value: string) {
           <div>
             <h2 class="text-base font-bold tracking-tight text-foreground">Shopping Summary</h2>
             <p class="text-sm text-muted-foreground">
-              Short AI summary and alerts for the current list.
+              AI review for the current list, pantry adds, exact duplicates, and category cleanup.
             </p>
           </div>
         </div>
@@ -711,6 +711,48 @@ function escapeHtml(value: string) {
               >
                 {{ focus }}
               </span>
+            </div>
+          </div>
+
+          <div v-if="visibleAiSummary.pantrySuggestions?.length" class="space-y-2">
+            <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pantry Suggestions</p>
+            <div class="space-y-2">
+              <div
+                v-for="suggestion in visibleAiSummary.pantrySuggestions"
+                :key="suggestion"
+                class="flex items-start gap-2 rounded-xl border border-emerald-500/15 bg-emerald-500/8 px-3 py-2.5 text-sm text-foreground"
+              >
+                <Archive class="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+                <span>{{ suggestion }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="visibleAiSummary.duplicateSuggestions?.length" class="space-y-2">
+            <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Exact Duplicate Checks</p>
+            <div class="space-y-2">
+              <div
+                v-for="suggestion in visibleAiSummary.duplicateSuggestions"
+                :key="suggestion"
+                class="flex items-start gap-2 rounded-xl border border-amber-500/15 bg-amber-500/8 px-3 py-2.5 text-sm text-foreground"
+              >
+                <Copy class="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                <span>{{ suggestion }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="visibleAiSummary.categorySuggestions?.length" class="space-y-2">
+            <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Category Cleanup</p>
+            <div class="space-y-2">
+              <div
+                v-for="suggestion in visibleAiSummary.categorySuggestions"
+                :key="suggestion"
+                class="flex items-start gap-2 rounded-xl border border-primary/15 bg-primary/[0.04] px-3 py-2.5 text-sm text-foreground"
+              >
+                <ShoppingCart class="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <span>{{ suggestion }}</span>
+              </div>
             </div>
           </div>
         </div>

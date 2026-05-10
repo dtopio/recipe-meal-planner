@@ -24,6 +24,9 @@ const shoppingSummarySchema = z.object({
   summary: z.string().min(1),
   alerts: z.array(z.string()).max(3),
   focus: z.array(z.string()).max(3),
+  pantrySuggestions: z.array(z.string()).max(5).default([]),
+  duplicateSuggestions: z.array(z.string()).max(5).default([]),
+  categorySuggestions: z.array(z.string()).max(5).default([]),
 })
 
 const plannerDraftSchema = z.object({
@@ -148,17 +151,26 @@ export async function generateShoppingSummary(input) {
   return requestOpenRouterJson([
     {
       role: 'system',
-      content: 'You are a practical grocery-planning assistant. Return JSON only.',
+      content: [
+        'You are a practical grocery and pantry-planning assistant.',
+        'Return JSON only.',
+        'Never suggest automatic edits; every suggestion is for user review.',
+        'Only call shopping items duplicates when normalized name and unit match exactly.',
+        'If duplicate candidates include recipe source data, only call them duplicates when the source recipe is exactly the same.',
+      ].join(' '),
     },
     {
       role: 'user',
       content: JSON.stringify({
-        task: 'Summarize this shopping list for a meal-planning app. Be brief, practical, and action-oriented.',
+        task: 'Review this current shopping list and pantry for a meal-planning app. Be brief, practical, and action-oriented.',
         requiredShape: {
           headline: 'short title',
           summary: '2 sentence summary',
           alerts: ['up to 3 short alerts'],
           focus: ['up to 3 category or store-focus suggestions'],
+          pantrySuggestions: ['up to 5 checked shopping items worth adding to pantry after review'],
+          duplicateSuggestions: ['up to 5 exact duplicate checks only, following the duplicate rules'],
+          categorySuggestions: ['up to 5 category cleanup suggestions'],
         },
         shopping: input,
       }),

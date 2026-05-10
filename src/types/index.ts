@@ -402,6 +402,9 @@ export interface ShoppingAiSummary {
   summary: string
   alerts: string[]
   focus: string[]
+  pantrySuggestions: string[]
+  duplicateSuggestions: string[]
+  categorySuggestions: string[]
   model: string
   generatedAt: string
   weekStart: string

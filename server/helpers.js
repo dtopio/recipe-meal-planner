@@ -581,26 +581,33 @@ function formatShoppingSourceLabel(sources = []) {
   return `${labels.slice(0, 2).join(' + ')} + ${labels.length - 2} more`
 }
 
-export async function getShoppingSummaryInput(householdId) {
+export async function getShoppingSummaryInput(householdId, weekStart = '', period = 'all') {
   const shoppingItems = await db.getShoppingItems(householdId)
   const pantryItems = await db.getPantryItems(householdId)
+  const periodShoppingItems = filterShoppingItemsByPeriod(shoppingItems, period, weekStart)
 
   return {
-    shoppingItems: shoppingItems.filter(s => !s.checked),
-    pantryItems: pantryItems.filter(p => {
+    shoppingItems: periodShoppingItems.filter(s => !s.checked).map(serializeShoppingSummaryItem),
+    checkedItems: periodShoppingItems.filter(s => s.checked).map(serializeShoppingSummaryItem),
+    pantryItems: pantryItems.map(serializePantrySummaryItem),
+    lowStockPantryItems: pantryItems.filter(p => {
       if (!p.lowStockThreshold || !p.quantity) return false
       return p.quantity <= p.lowStockThreshold
-    }),
+    }).map(serializePantrySummaryItem),
   }
 }
 
 export async function getShoppingListSummary(householdId, weekStart = '', period = 'all') {
+  const input = await getShoppingSummaryInput(householdId, weekStart, period)
+  const builtinReview = getBuiltinShoppingReview(input)
+
   if (!config.openrouterApiKey) {
     return {
       headline: 'Shopping Summary',
       summary: `You have pending shopping items and low-stock pantry alerts.`,
       alerts: [],
       focus: [],
+      ...builtinReview,
       model: 'builtin',
       generatedAt: nowIso(),
       weekStart,
@@ -608,16 +615,132 @@ export async function getShoppingListSummary(householdId, weekStart = '', period
     }
   }
 
-  const input = await getShoppingSummaryInput(householdId)
   const aiResponse = await generateShoppingSummary(input)
   return {
     ...aiResponse,
+    pantrySuggestions: mergeSuggestionLists(aiResponse.pantrySuggestions, builtinReview.pantrySuggestions, 5),
+    duplicateSuggestions: builtinReview.duplicateSuggestions,
+    categorySuggestions: mergeSuggestionLists(aiResponse.categorySuggestions, builtinReview.categorySuggestions, 5),
     weekStart,
     period,
   }
 }
 
 export const getShoppingSummary = getShoppingListSummary
+
+function serializeShoppingSummaryItem(item) {
+  return {
+    id: item.id,
+    name: item.name,
+    quantity: item.quantity,
+    unit: item.unit,
+    category: item.category,
+    checked: item.checked,
+    sourceRecipeId: item.sourceRecipeId,
+    sourceRecipeName: item.sourceRecipeName,
+    generated: Boolean(item.generated),
+  }
+}
+
+function serializePantrySummaryItem(item) {
+  return {
+    id: item.id,
+    name: item.name,
+    quantity: item.quantity,
+    unit: item.unit,
+    category: item.category,
+    lowStockThreshold: item.lowStockThreshold,
+    expiresAt: item.expiresAt,
+  }
+}
+
+function getBuiltinShoppingReview(input) {
+  return {
+    pantrySuggestions: getPantryImportSuggestions(input.checkedItems, input.pantryItems),
+    duplicateSuggestions: getExactDuplicateSuggestions([...input.shoppingItems, ...input.checkedItems]),
+    categorySuggestions: getCategorySuggestions([...input.shoppingItems, ...input.checkedItems]),
+  }
+}
+
+function getPantryImportSuggestions(checkedItems = [], pantryItems = []) {
+  const pantryByKey = new Map(pantryItems.map(item => [ingredientMatchKey(item.name, item.unit), item]))
+
+  return checkedItems
+    .filter(item => item.category !== 'household')
+    .slice(0, 5)
+    .map(item => {
+      const pantryMatch = pantryByKey.get(ingredientMatchKey(item.name, item.unit))
+      const quantity = formatShoppingQuantity(item.quantity, item.unit)
+
+      return pantryMatch
+        ? `${item.name}: add checked ${quantity} to the existing pantry item.`
+        : `${item.name}: add checked ${quantity} to pantry after review.`
+    })
+}
+
+function getExactDuplicateSuggestions(items = []) {
+  const groups = new Map()
+
+  for (const item of items) {
+    const sourceKey = getDuplicateSourceKey(item)
+    if (!sourceKey) continue
+
+    const key = `${ingredientMatchKey(item.name, item.unit)}::${sourceKey}`
+    groups.set(key, [...(groups.get(key) || []), item])
+  }
+
+  return Array.from(groups.values())
+    .filter(group => group.length > 1)
+    .slice(0, 5)
+    .map(group => {
+      const first = group[0]
+      const sourceLabel = first.sourceRecipeName ? ` from ${first.sourceRecipeName}` : ''
+      return `${group.length} exact ${first.name} entries${sourceLabel} share the same unit; review whether to combine them.`
+    })
+}
+
+function getCategorySuggestions(items = []) {
+  return items
+    .map(item => ({
+      item,
+      suggestedCategory: guessShoppingCategory(item.name),
+    }))
+    .filter(({ item, suggestedCategory }) => item.category === 'other' && suggestedCategory !== item.category)
+    .slice(0, 5)
+    .map(({ item, suggestedCategory }) => `${item.name}: consider moving from Other to ${formatCategoryName(suggestedCategory)}.`)
+}
+
+function getDuplicateSourceKey(item) {
+  if (item.sourceRecipeId) return `recipe-id:${item.sourceRecipeId}`
+  if (item.sourceRecipeName) return `recipe-name:${item.sourceRecipeName.toLowerCase().trim()}`
+  return ''
+}
+
+function formatShoppingQuantity(quantity, unit) {
+  return `${Number(Number(quantity || 0).toFixed(2))} ${unit || 'units'}`
+}
+
+function formatCategoryName(category) {
+  return category
+    .split('-')
+    .map(part => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function mergeSuggestionLists(primary = [], secondary = [], limit = 5) {
+  const seen = new Set()
+  const merged = []
+
+  for (const item of [...primary, ...secondary]) {
+    const key = String(item || '').toLowerCase().trim()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    merged.push(item)
+    if (merged.length >= limit) break
+  }
+
+  return merged
+}
 
 export function filterShoppingItemsByPeriod(items, period, weekStart) {
   if (period === 'all') return items
