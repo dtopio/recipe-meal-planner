@@ -10,6 +10,7 @@ export const usePantryStore = defineStore('pantry', () => {
   const error = ref<string | null>(null)
   const searchQuery = ref('')
   const filterCategory = ref<ShoppingCategory | null>(null)
+  const sortBy = ref<'name' | 'low-stock' | 'expiry'>('name')
   let loadPromise: Promise<void> | null = null
 
   const filteredItems = computed(() => {
@@ -24,7 +25,21 @@ export const usePantryStore = defineStore('pantry', () => {
       result = result.filter(item => item.category === filterCategory.value)
     }
 
-    return result.sort((left, right) => left.name.localeCompare(right.name))
+    return result.sort((left, right) => {
+      if (sortBy.value === 'low-stock') {
+        const leftMargin = left.quantity - left.lowStockThreshold
+        const rightMargin = right.quantity - right.lowStockThreshold
+        return leftMargin - rightMargin || left.name.localeCompare(right.name)
+      }
+
+      if (sortBy.value === 'expiry') {
+        const leftExpiry = left.expiresAt || '9999-12-31'
+        const rightExpiry = right.expiresAt || '9999-12-31'
+        return leftExpiry.localeCompare(rightExpiry) || left.name.localeCompare(right.name)
+      }
+
+      return left.name.localeCompare(right.name)
+    })
   })
 
   const itemsByCategory = computed(() => {
@@ -145,6 +160,7 @@ export const usePantryStore = defineStore('pantry', () => {
     error,
     searchQuery,
     filterCategory,
+    sortBy,
     filteredItems,
     itemsByCategory,
     lowStockItems,

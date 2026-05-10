@@ -2,6 +2,7 @@
 import { onMounted, ref, computed, watch } from 'vue'
 import { useShoppingStore } from '@/stores/shopping'
 import { usePlannerStore } from '@/stores/planner'
+import { usePantryStore } from '@/stores/pantry'
 import { useUiStore } from '@/stores/ui'
 import { useOnline } from '@/composables/useOnline'
 import { syncService } from '@/services/sync/socket'
@@ -15,6 +16,7 @@ import { Progress } from '@/components/ui/progress'
 import { CATEGORY_LABELS, CATEGORY_EMOJI, SHOPPING_CATEGORIES } from '@/types'
 import type { AddShoppingItemDTO, ShoppingListItem, ShoppingPeriod } from '@/types'
 import { formatDateShort } from '@/utils/date'
+import { ingredientMatchKey } from '@/utils/recipe'
 import {
   Plus,
   Search,
@@ -36,6 +38,7 @@ import { toast } from 'vue-sonner'
 
 const store = useShoppingStore()
 const planner = usePlannerStore()
+const pantry = usePantryStore()
 const ui = useUiStore()
 const { isOnline } = useOnline()
 
@@ -91,9 +94,34 @@ const exportItems = computed(() => {
     return left.name.localeCompare(right.name)
   })
 })
+const pantryCoverageByKey = computed(() => {
+  const coverage = new Map<string, { quantity: number; unit: string }>()
+
+  for (const item of pantry.items) {
+    if (item.quantity <= 0) continue
+
+    const key = ingredientMatchKey(item.name, item.unit)
+    const existing = coverage.get(key)
+
+    if (existing) {
+      existing.quantity += item.quantity
+    } else {
+      coverage.set(key, {
+        quantity: item.quantity,
+        unit: item.unit,
+      })
+    }
+  }
+
+  return coverage
+})
 
 onMounted(async () => {
-  await Promise.all([store.loadItems(), planner.loadWeekPlan()])
+  await Promise.all([
+    store.loadItems(),
+    planner.loadWeekPlan(),
+    pantry.loadItems().catch(() => undefined),
+  ])
   store.periodWeekStart = planner.currentWeekStart
   syncService.connect()
 })
@@ -219,6 +247,13 @@ function buildShareText() {
 function formatShareItemLine(item: ShoppingListItem) {
   const base = `- ${item.quantity} ${item.unit}`.trimEnd() + ` ${item.name}`.replace(/\s+/g, ' ').trim()
   return item.sourceRecipeName ? `${base} (for ${item.sourceRecipeName})` : base
+}
+
+function getPantryCoverageLabel(item: ShoppingListItem) {
+  const coverage = pantryCoverageByKey.value.get(ingredientMatchKey(item.name, item.unit))
+  if (!coverage) return ''
+
+  return `In pantry: ${formatCompactQuantity(coverage.quantity)} ${coverage.unit || 'units'}`
 }
 
 async function handleCopyList() {
@@ -370,6 +405,10 @@ function buildPrintHtml() {
 
 function formatExportQuantity(quantity: number, unit: string) {
   return `${quantity} ${unit}`.trim()
+}
+
+function formatCompactQuantity(value: number) {
+  return Number(value.toFixed(2)).toString()
 }
 
 function escapeHtml(value: string) {
@@ -706,6 +745,7 @@ function escapeHtml(value: string) {
               v-for="item in items"
               :key="item.id"
               :item="item"
+              :pantry-coverage-label="getPantryCoverageLabel(item)"
               @toggle="store.toggleItem(item.id)"
               @remove="handleRemoveItem(item.id)"
             />
@@ -737,6 +777,7 @@ function escapeHtml(value: string) {
               v-for="item in store.checkedItems"
               :key="item.id"
               :item="item"
+              :pantry-coverage-label="getPantryCoverageLabel(item)"
               @toggle="store.toggleItem(item.id)"
               @remove="handleRemoveItem(item.id)"
             />
